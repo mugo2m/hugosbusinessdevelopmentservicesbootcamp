@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import { COUNTRY_CURRENCY_MAP } from "@/lib/config/currency";
+import { CurrencySwitcher } from "@/components/CurrencySwitcher";
 
 interface CreateInterviewAgentProps {
   userName: string;
@@ -94,8 +95,6 @@ const ingredientOptions = [
   "maize germ",
   "wheat germ"
 ];
-
-
 
 // ========== COUNTRY LIST ==========
 const countryOptions = [
@@ -294,6 +293,18 @@ const CreateInterviewAgent = ({
   const isRecognitionActiveRef = useRef(false);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+
+  // ----- Timer ref for karaoke word progression -----
+  const wordTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ----- Voice cache to avoid repeated loading delays -----
+  const voiceCacheRef = useRef<Record<string, SpeechSynthesisVoice | null>>({});
+
+  // ----- TTS Warmup flag -----
+  const ttsWarmedUpRef = useRef(false);
+
+  // ----- Resolver for the current speech promise -----
+  const speechResolveRef = useRef<(() => void) | null>(null);
 
   const mapI18nToVoiceLanguage = (i18nLang: string): string => {
     switch (i18nLang) {
@@ -544,251 +555,294 @@ const CreateInterviewAgent = ({
     };
   }, [recognitionLanguage, safeT]);
 
-  // ========== VOICE ASSISTANT REF (FIXED) ==========
+  // ========== PRE‑LOAD VOICES AND CACHE THEM ==========
   useEffect(() => {
-    let isMounted = true;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
+    const loadVoices = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+      if (allVoices.length === 0) return;
+
+      // Pre‑cache voices for all supported languages
+      const languages = ['en-US', 'en-GB', 'fr-FR', 'es-ES', 'sw-KE'];
+      languages.forEach(lang => {
+        let voice = allVoices.find(v => v.lang === lang && !v.name.toLowerCase().includes('male'));
+        if (!voice) voice = allVoices.find(v => v.lang === lang);
+        if (!voice) voice = allVoices.find(v => v.lang.startsWith(lang.split('-')[0]));
+        if (voice) {
+          voiceCacheRef.current[lang] = voice;
+        }
+      });
+      if (!voiceCacheRef.current['default']) {
+        voiceCacheRef.current['default'] = allVoices[0] || null;
+      }
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  // ========== WARM UP TTS ENGINE ==========
+  const warmUpTTS = useCallback(() => {
+    if (ttsWarmedUpRef.current) return;
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    try {
+      const dummy = new SpeechSynthesisUtterance(' ');
+      dummy.volume = 0;
+      dummy.rate = 1;
+      dummy.pitch = 1;
+      dummy.onend = () => {
+        window.speechSynthesis.cancel();
+        ttsWarmedUpRef.current = true;
+        console.log('✅ TTS engine warmed up');
+      };
+      dummy.onerror = () => {
+        window.speechSynthesis.cancel();
+        ttsWarmedUpRef.current = true;
+        console.warn('⚠️ TTS warmup error, but continuing');
+      };
+      window.speechSynthesis.speak(dummy);
+      setTimeout(() => {
+        window.speechSynthesis.cancel();
+        ttsWarmedUpRef.current = true;
+      }, 200);
+    } catch (e) {
+      console.warn('TTS warmup failed:', e);
+      ttsWarmedUpRef.current = true;
+    }
+  }, []);
+
+  // ========== VOICE ASSISTANT REF ==========
+  useEffect(() => {
     if (!voiceEnabled) {
       voiceAssistantRef.current = null;
       voiceReadyToastShownRef.current = false;
+      ttsWarmedUpRef.current = false;
       return;
     }
 
-    voiceAssistantRef.current = { speak: async (text: string) => streamQuestionWithVoice(text) };
+    voiceAssistantRef.current = {
+      speak: async (text: string) => {
+        return streamQuestionWithVoice(text);
+      }
+    };
 
-    if (isMounted && voiceEnabled && !voiceReadyToastShownRef.current) {
+    if (!ttsWarmedUpRef.current) {
+      warmUpTTS();
+    }
+
+    if (voiceEnabled && !voiceReadyToastShownRef.current) {
       toast.success(safeT('voice_ready'));
       voiceReadyToastShownRef.current = true;
     }
+  }, [voiceEnabled, safeT, warmUpTTS]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [voiceEnabled, safeT, recognitionLanguage]);
+  // ================================================================
+  // ========== FIXED: PROMISE-BASED VOICE WITH DYNAMIC KARAOKE ==========
+  // ========== NOW WRAPPED WITH useCallback TO REACT TO CURRENCY CHANGES ==========
+  // ================================================================
+  const streamQuestionWithVoice = useCallback((fullText: string): Promise<void> => {
+    return new Promise((resolve) => {
+      // Guard: if voice is disabled or no speech synthesis
+      if (!voiceEnabled || !window.speechSynthesis) {
+        setStreamingQuestion(fullText);
+        resolve();
+        return;
+      }
 
-  // ========== VOICE SELECTION ==========
-  const getBestVoiceForLanguage = async (language: string): Promise<SpeechSynthesisVoice | null> => {
-    const waitForVoices = (): Promise<SpeechSynthesisVoice[]> => {
-      return new Promise((resolve) => {
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length) {
-          resolve(voices);
-          return;
+      // Clean up any previous speech and timers
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+      if (wordTimerRef.current) {
+        clearTimeout(wordTimerRef.current);
+        wordTimerRef.current = null;
+      }
+
+      // If text is empty or only spaces, just resolve
+      if (!fullText || fullText.trim().length === 0) {
+        setStreamingQuestion(fullText);
+        resolve();
+        return;
+      }
+
+      setIsStreaming(true);
+      setStreamingQuestion("");
+      setCurrentWordIndex(0);
+      setUserTranscript("");
+
+      const spokenCurrencyName = getSpokenCurrencyName();
+      const currencySymbol = currency.symbol;
+      const escapedSymbol = currencySymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      let speechText = fullText.replace(new RegExp(`${escapedSymbol}\\s`, 'g'), `${spokenCurrencyName} `);
+      speechText = speechText.replace(new RegExp(`\\b${escapedSymbol}\\b`, 'g'), spokenCurrencyName);
+
+      // Stop recognition while speaking
+      if (recognitionRef.current && isRecognitionActiveRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+        isRecognitionActiveRef.current = false;
+        setDebugInfo(prev => ({ ...prev, isListening: false }));
+      }
+
+      const words = speechText.split(' ');
+      questionWordsRef.current = words;
+
+      const utterance = new SpeechSynthesisUtterance(speechText);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.1;
+      utterance.lang = recognitionLanguage;
+
+      // Use cached voice if available
+      const cachedVoice = voiceCacheRef.current[recognitionLanguage] || voiceCacheRef.current['default'] || null;
+      if (cachedVoice) {
+        utterance.voice = cachedVoice;
+      }
+
+      setIsSpeaking(true);
+
+      // ---- DYNAMIC TIMER: each word schedules the next based on its length ----
+      let wordIndex = 0;
+      let currentText = '';
+      let isFinished = false;
+      let speechEnded = false; // to prevent double resolve
+
+      const finish = () => {
+        if (isFinished) return;
+        isFinished = true;
+        speechEnded = true;
+        if (wordTimerRef.current) {
+          clearTimeout(wordTimerRef.current);
+          wordTimerRef.current = null;
         }
-        const onChanged = () => {
-          const newVoices = window.speechSynthesis.getVoices();
-          if (newVoices.length) {
-            window.speechSynthesis.onvoiceschanged = null;
-            resolve(newVoices);
-          }
-        };
-        window.speechSynthesis.onvoiceschanged = onChanged;
-        setTimeout(() => {
-          window.speechSynthesis.onvoiceschanged = null;
-          resolve(window.speechSynthesis.getVoices());
-        }, 3000);
-      });
-    };
-
-    let voices = await waitForVoices();
-    if (!voices.length) return null;
-
-    const findBritishEnglishFemale = (): SpeechSynthesisVoice | null => {
-      const femaleNames = ['libby','hazel','susan','maisie','sonia','kate','victoria','millie','olivia','google uk english female','microsoft libby','microsoft hazel','microsoft susan','microsoft maisie','microsoft sonia','british english female','uk english female'];
-      for (const name of femaleNames) {
-        const voice = voices.find(v => v.lang === 'en-GB' && v.name.toLowerCase().includes(name));
-        if (voice) return voice;
-      }
-      const maleIndicators = ['george','ryan','thomas','david','mark','james','john','paul','michael'];
-      const anyBritishFemale = voices.find(v => v.lang === 'en-GB' && !maleIndicators.some(m => v.name.toLowerCase().includes(m)));
-      if (anyBritishFemale) return anyBritishFemale;
-      return voices.find(v => v.lang === 'en-GB') || null;
-    };
-
-    const findAmericanEnglishFemale = (): SpeechSynthesisVoice | null => {
-      const femaleNames = ['zira','samantha','victoria','jenny','aria','google us english female','microsoft jenny','microsoft zira','microsoft aria','us english female'];
-      for (const name of femaleNames) {
-        const voice = voices.find(v => v.lang === 'en-US' && v.name.toLowerCase().includes(name));
-        if (voice) return voice;
-      }
-      const maleIndicators = ['david','mark','james','john','paul','michael','alex','thomas'];
-      const anyFemale = voices.find(v => v.lang === 'en-US' && !maleIndicators.some(m => v.name.toLowerCase().includes(m)));
-      if (anyFemale) return anyFemale;
-      return voices.find(v => v.lang === 'en-US') || null;
-    };
-
-    const findFrenchVoice = (): SpeechSynthesisVoice | null => {
-      let vivienne = voices.find(v => v.lang.startsWith('fr') && v.name.toLowerCase().includes('vivienne'));
-      if (vivienne) return vivienne;
-      const frenchFemale = voices.find(v => v.lang.startsWith('fr') && (v.name.toLowerCase().includes('denise') || v.name.toLowerCase().includes('google français female') || v.name.toLowerCase().includes('marie') || v.name.toLowerCase().includes('chloe')));
-      if (frenchFemale) return frenchFemale;
-      return voices.find(v => v.lang.startsWith('fr')) || null;
-    };
-
-    const findSpanishVoice = (): SpeechSynthesisVoice | null => {
-      const femaleNames = ['helena','elena','ximena','maria','paloma','sofia','catalina','salome','belkys','ramona','andrea','lorena','teresa','marta','karla','dalia','yolanda','margarita','tania','camila','karina','elvira','valentina','paola','michelle','gabriela','lucia','laura','fernanda','victoria','monica','paulina','sabina','florencia','josefina','marcela','beatriz'];
-      for (const name of femaleNames) {
-        const voice = voices.find(v => v.lang.startsWith('es') && v.name.toLowerCase().includes(name));
-        if (voice) return voice;
-      }
-      const nonMale = voices.find(v => v.lang.startsWith('es') && !v.name.toLowerCase().includes('alvaro') && !v.name.toLowerCase().includes('jorge') && !v.name.toLowerCase().includes('manuel') && !v.name.toLowerCase().includes('andres') && !v.name.toLowerCase().includes('carlos') && !v.name.toLowerCase().includes('juan') && !v.name.toLowerCase().includes('luis') && !v.name.toLowerCase().includes('rodrigo') && !v.name.toLowerCase().includes('javier') && !v.name.toLowerCase().includes('federico') && !v.name.toLowerCase().includes('victor') && !v.name.toLowerCase().includes('mateo') && !v.name.toLowerCase().includes('sebastian') && !v.name.toLowerCase().includes('gonzalo') && !v.name.toLowerCase().includes('lorenzo') && !v.name.toLowerCase().includes('marcelo') && !v.name.toLowerCase().includes('tomas') && !v.name.toLowerCase().includes('emilio') && !v.name.toLowerCase().includes('alonso'));
-      if (nonMale) return nonMale;
-      return null;
-    };
-
-    const findSwahiliVoice = (): SpeechSynthesisVoice | null => {
-      let rafiki = voices.find(v => v.lang === 'sw-KE' && v.name.toLowerCase().includes('rafiki'));
-      if (rafiki) return rafiki;
-      return voices.find(v => v.lang === 'sw-KE') || null;
-    };
-
-    if (language === 'en-GB' || language === 'en-UK' || language.toLowerCase().includes('british')) {
-      let voice = findBritishEnglishFemale();
-      let attempts = 0;
-      while (!voice && attempts < 5) { await new Promise(r => setTimeout(r, 1000)); voices = window.speechSynthesis.getVoices(); voice = findBritishEnglishFemale(); attempts++; }
-      if (voice) return voice;
-    }
-    if (language === 'en-US') {
-      let voice = findAmericanEnglishFemale();
-      let attempts = 0;
-      while (!voice && attempts < 5) { await new Promise(r => setTimeout(r, 1000)); voices = window.speechSynthesis.getVoices(); voice = findAmericanEnglishFemale(); attempts++; }
-      if (voice) return voice;
-    }
-    if (language === 'fr-FR' || language === 'fr-CA' || language.startsWith('fr')) {
-      let voice = findFrenchVoice();
-      let attempts = 0;
-      while (!voice && attempts < 5) { await new Promise(r => setTimeout(r, 1000)); voices = window.speechSynthesis.getVoices(); voice = findFrenchVoice(); attempts++; }
-      if (voice) return voice;
-    }
-    if (language === 'es-ES' || language.startsWith('es')) {
-      let voice = findSpanishVoice();
-      let attempts = 0;
-      while (!voice && attempts < 5) { await new Promise(r => setTimeout(r, 1000)); voices = window.speechSynthesis.getVoices(); voice = findSpanishVoice(); attempts++; }
-      if (voice) return voice;
-    }
-    if (language === 'sw-KE' || language === 'sw-TZ' || language.startsWith('sw')) {
-      let voice = findSwahiliVoice();
-      let attempts = 0;
-      while (!voice && attempts < 5) { await new Promise(r => setTimeout(r, 1000)); voices = window.speechSynthesis.getVoices(); voice = findSwahiliVoice(); attempts++; }
-      if (voice) return voice;
-    }
-
-    const anyEnglish = voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male'));
-    if (anyEnglish) return anyEnglish;
-    return voices[0] || null;
-  };
-
-  // ========== STREAM QUESTION WITH VOICE ==========
-  const streamQuestionWithVoice = async (fullText: string) => {
-    if (!voiceEnabled || !window.speechSynthesis) {
-      setStreamingQuestion(fullText);
-      return;
-    }
-
-    setIsStreaming(true);
-    setStreamingQuestion("");
-    setCurrentWordIndex(0);
-    setUserTranscript("");
-
-    const spokenCurrencyName = getSpokenCurrencyName();
-    const currencySymbol = currency.symbol;
-    const escapedSymbol = currencySymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let speechText = fullText.replace(new RegExp(`${escapedSymbol}\\s`, 'g'), `${spokenCurrencyName} `);
-    speechText = speechText.replace(new RegExp(`\\b${escapedSymbol}\\b`, 'g'), spokenCurrencyName);
-
-    if (recognitionRef.current && isRecognitionActiveRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
-      isRecognitionActiveRef.current = false;
-      setDebugInfo(prev => ({ ...prev, isListening: false }));
-    }
-
-    const words = speechText.split(' ');
-    questionWordsRef.current = words;
-
-    const utterance = new SpeechSynthesisUtterance(speechText);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.1;
-    utterance.lang = recognitionLanguage;
-
-    const bestVoice = await getBestVoiceForLanguage(recognitionLanguage);
-    if (bestVoice) {
-      utterance.voice = bestVoice;
-    }
-    setIsSpeaking(true);
-
-    let wordIndex = 0;
-    let currentText = '';
-    let safetyTimeout: NodeJS.Timeout | null = setTimeout(() => {
-      if (isSpeaking) {
-        console.warn("⚠️ Speech took too long – forcing continue");
-        if (utterance.onend) utterance.onend({} as any);
-      }
-    }, 20000);
-    let finished = false;
-
-    utterance.onboundary = (event) => {
-      if (event.name === 'word' && wordIndex < words.length) {
-        currentText += (wordIndex === 0 ? '' : ' ') + words[wordIndex];
-        let displayText = currentText;
+        // Show full text if not already all shown
+        let finalDisplay = fullText;
         const displaySymbol = getDisplaySymbol();
         if (displaySymbol !== currencySymbol) {
-          displayText = displayText.replace(new RegExp(spokenCurrencyName, 'g'), displaySymbol);
+          finalDisplay = finalDisplay.replace(new RegExp(escapedSymbol, 'g'), displaySymbol);
         }
-        setStreamingQuestion(displayText);
-        setCurrentWordIndex(wordIndex + 1);
-        wordIndex++;
-      }
-    };
-
-    utterance.onend = () => {
-      if (finished) return;
-      finished = true;
-      if (safetyTimeout) clearTimeout(safetyTimeout);
-      let finalDisplay = fullText;
-      const displaySymbol = getDisplaySymbol();
-      if (displaySymbol !== currencySymbol) {
-        finalDisplay = finalDisplay.replace(new RegExp(escapedSymbol, 'g'), displaySymbol);
-      }
-      setStreamingQuestion(finalDisplay);
-      setIsStreaming(false);
-      setIsSpeaking(false);
-      setTimeout(() => safeStartListening(), 1500);
-    };
-
-    utterance.onerror = (event) => {
-      if (finished) return;
-      finished = true;
-      if (safetyTimeout) clearTimeout(safetyTimeout);
-      console.error("Speech error:", event);
-      const fallbackUtterance = new SpeechSynthesisUtterance(speechText);
-      fallbackUtterance.rate = 1.0;
-      fallbackUtterance.pitch = 1.1;
-      fallbackUtterance.lang = recognitionLanguage;
-      fallbackUtterance.onend = () => {
-        let finalDisplay = fullText;
-        const ds = getDisplaySymbol();
-        if (ds !== currencySymbol) finalDisplay = finalDisplay.replace(new RegExp(escapedSymbol, 'g'), ds);
         setStreamingQuestion(finalDisplay);
         setIsStreaming(false);
         setIsSpeaking(false);
-        setTimeout(() => safeStartListening(), 1500);
+        resolve(); // resolve the promise
       };
-      fallbackUtterance.onerror = () => {
-        let finalDisplay = fullText;
-        const ds = getDisplaySymbol();
-        if (ds !== currencySymbol) finalDisplay = finalDisplay.replace(new RegExp(escapedSymbol, 'g'), ds);
-        setStreamingQuestion(finalDisplay);
-        setIsStreaming(false);
-        setIsSpeaking(false);
-        setTimeout(() => safeStartListening(), 500);
+
+      const scheduleNextWord = () => {
+        if (isFinished || wordIndex >= words.length) {
+          if (wordTimerRef.current) {
+            clearTimeout(wordTimerRef.current);
+            wordTimerRef.current = null;
+          }
+          // If all words are shown but speech hasn't ended, we still wait for onend
+          // But if all words are shown and speech is done, finish will be called by onend
+          return;
+        }
+
+        const word = words[wordIndex];
+        // Estimate speaking duration: 100ms per character, min 150ms, max 1200ms
+        const duration = Math.max(150, Math.min(1200, word.length * 100));
+
+        wordTimerRef.current = setTimeout(() => {
+          // Append the word
+          currentText += (currentText ? ' ' : '') + word;
+          let displayText = currentText;
+          const displaySymbol = getDisplaySymbol();
+          if (displaySymbol !== currencySymbol) {
+            displayText = displayText.replace(new RegExp(spokenCurrencyName, 'g'), displaySymbol);
+          }
+          setStreamingQuestion(displayText);
+          setCurrentWordIndex(wordIndex + 1);
+          wordIndex++;
+          // Schedule the next word
+          scheduleNextWord();
+        }, duration);
       };
-      window.speechSynthesis.speak(fallbackUtterance);
-    };
 
-    window.speechSynthesis.speak(utterance);
-  };
+      // Start the timer chain
+      if (words.length > 0) {
+        scheduleNextWord();
+      } else {
+        // No words? Just finish
+        finish();
+        return;
+      }
 
-  // ========== SPEAK ACKNOWLEDGMENT ==========
+      // ---- SPEECH SYNTHESIS EVENTS ----
+      let safetyTimeout: NodeJS.Timeout | null = setTimeout(() => {
+        if (!isFinished) {
+          console.warn("⚠️ Speech took too long – forcing finish");
+          finish();
+        }
+      }, 30000); // 30s safety
+
+      utterance.onend = () => {
+        if (safetyTimeout) clearTimeout(safetyTimeout);
+        // Ensure all words are shown
+        if (!isFinished) {
+          // If timer hasn't finished, clear it and show full text
+          if (wordTimerRef.current) {
+            clearTimeout(wordTimerRef.current);
+            wordTimerRef.current = null;
+          }
+          let finalDisplay = fullText;
+          const displaySymbol = getDisplaySymbol();
+          if (displaySymbol !== currencySymbol) {
+            finalDisplay = finalDisplay.replace(new RegExp(escapedSymbol, 'g'), displaySymbol);
+          }
+          setStreamingQuestion(finalDisplay);
+          setCurrentWordIndex(words.length);
+          setIsStreaming(false);
+          setIsSpeaking(false);
+          resolve();
+          isFinished = true;
+        } else {
+          // Already finished by timer? Just resolve again if not resolved
+          if (!speechEnded) {
+            setIsStreaming(false);
+            setIsSpeaking(false);
+            resolve();
+            speechEnded = true;
+          }
+        }
+      };
+
+      utterance.onerror = (event) => {
+        if (safetyTimeout) clearTimeout(safetyTimeout);
+        console.error("Speech error:", event);
+        // Fallback: show full text and resolve
+        if (!isFinished) {
+          if (wordTimerRef.current) {
+            clearTimeout(wordTimerRef.current);
+            wordTimerRef.current = null;
+          }
+          let finalDisplay = fullText;
+          const ds = getDisplaySymbol();
+          if (ds !== currencySymbol) finalDisplay = finalDisplay.replace(new RegExp(escapedSymbol, 'g'), ds);
+          setStreamingQuestion(finalDisplay);
+          setIsStreaming(false);
+          setIsSpeaking(false);
+          resolve();
+          isFinished = true;
+          speechEnded = true;
+        } else if (!speechEnded) {
+          setIsStreaming(false);
+          setIsSpeaking(false);
+          resolve();
+          speechEnded = true;
+        }
+      };
+
+      // Start speaking
+      window.speechSynthesis.speak(utterance);
+    });
+  }, [currency, voiceEnabled, recognitionLanguage, getSpokenCurrencyName, getDisplaySymbol]);
+
+  // ================================================================
+
+  // ========== SPEAK ACKNOWLEDGMENT (now awaits speech) ==========
   const speakAcknowledgment = async (answer: string, fieldId: string) => {
     const spokenCurrencyName = getSpokenCurrencyName();
     const currencySymbol = currency.symbol;
@@ -830,7 +884,10 @@ const CreateInterviewAgent = ({
       acknowledgment = safeT('ack_generic', { answer: spokenAnswer });
     }
 
-    await voiceAssistantRef.current?.speak(acknowledgment);
+    // Await the speech completion
+    if (voiceAssistantRef.current) {
+      await voiceAssistantRef.current.speak(acknowledgment);
+    }
     toast.success(safeT('recorded', { answer }));
   };
 
@@ -844,7 +901,9 @@ const CreateInterviewAgent = ({
     if (!cleanAnswer) {
       const msg = "Please provide an answer.";
       toast.warning(msg);
-      await voiceAssistantRef.current?.speak(msg);
+      if (voiceAssistantRef.current) {
+        await voiceAssistantRef.current.speak(msg);
+      }
       return;
     }
 
@@ -854,7 +913,9 @@ const CreateInterviewAgent = ({
       if (isNaN(num) || num <= 0) {
         const msg = "Please enter a valid number (e.g., 100).";
         toast.warning(msg);
-        await voiceAssistantRef.current?.speak(msg);
+        if (voiceAssistantRef.current) {
+          await voiceAssistantRef.current.speak(msg);
+        }
         return;
       }
       cleanAnswer = num.toString();
@@ -870,8 +931,9 @@ const CreateInterviewAgent = ({
       await speakAcknowledgment(answer, currentConfig.id);
       setUserTranscript("");
       if (configStep < allQuestions.length - 1) {
-        setConfigStep(prev => prev + 1);
-        setTimeout(() => askQuestion(configStep + 1), 2500);
+        const nextStep = configStep + 1;
+        setConfigStep(nextStep);
+        setTimeout(() => askQuestion(nextStep), 2500);
       } else {
         setCurrentStep("generating");
         generateSession();
@@ -891,8 +953,9 @@ const CreateInterviewAgent = ({
       await speakAcknowledgment("Prices recorded", currentConfig.id);
       setUserTranscript("");
       if (configStep < allQuestions.length - 1) {
-        setConfigStep(prev => prev + 1);
-        setTimeout(() => askQuestion(configStep + 1), 1500);
+        const nextStep = configStep + 1;
+        setConfigStep(nextStep);
+        setTimeout(() => askQuestion(nextStep), 1500);
       } else {
         setCurrentStep("generating");
         generateSession();
@@ -927,8 +990,9 @@ const CreateInterviewAgent = ({
     setUserTranscript("");
 
     if (configStep < allQuestions.length - 1) {
-      setConfigStep(prev => prev + 1);
-      setTimeout(() => askQuestion(configStep + 1), 2500);
+      const nextStep = configStep + 1;
+      setConfigStep(nextStep);
+      setTimeout(() => askQuestion(nextStep), 2500);
     } else {
       setCurrentStep("generating");
       generateSession();
@@ -992,10 +1056,10 @@ const CreateInterviewAgent = ({
     });
     console.log("🔄 [startVoiceSetup] Farmer details reset");
 
-    askQuestion(0);
+    await askQuestion(0);
   };
 
-  // ========== ASK QUESTION (UPDATED) ==========
+  // ========== ASK QUESTION (now awaits speech completion) ==========
   const askQuestion = async (step: number) => {
     if (!voiceAssistantRef.current || step >= allQuestions.length) return;
     if (isSpeaking) await new Promise(resolve => setTimeout(resolve, 500));
@@ -1008,17 +1072,15 @@ const CreateInterviewAgent = ({
     setUserTranscript("");
     setLastSubmittedAnswer("");
 
+    // Wait for the speech to complete before continuing
     await voiceAssistantRef.current.speak(question);
 
     const q = allQuestions[step];
-    // --- NEW: Do NOT start listening for location fields ---
     const locationFields = ["county", "subCounty", "ward", "village"];
     if (q.type !== "multiselect" && q.type !== "prices" && !locationFields.includes(q.id)) {
       safeStartListening();
     }
-    // --- END OF CHANGE ---
   };
-  // ==========================================
 
   // ========== GENERATE SESSION ==========
   const generateSession = async () => {
@@ -1089,10 +1151,16 @@ const CreateInterviewAgent = ({
     console.log("🛑 [stopEverything] Stopping everything");
     safeStopListening();
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (wordTimerRef.current) {
+      clearTimeout(wordTimerRef.current);
+      wordTimerRef.current = null;
+    }
     setCurrentStep("idle");
     setStreamingQuestion("");
     setIsStreaming(false);
     setUserTranscript("");
+    // Resolve any pending speech promise (if any) by calling resolve?
+    // The promise will be resolved by the cleanup, but we can also force.
   };
 
   const submitAnswer = () => {
@@ -1258,7 +1326,7 @@ const CreateInterviewAgent = ({
     <div className={`flex flex-col gap-6 p-4 ${colors.background} rounded-2xl min-h-screen`}>
       {/* Header */}
       <div className={`${colors.card} rounded-2xl p-5 shadow-xl border`}>
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center flex-wrap gap-2">
           <div className="flex items-center gap-4">
             <Image src={profileImage || "/farmer-avatar.png"} alt="Farmer" width={48} height={48} className="rounded-full ring-4" />
             <div>
@@ -1266,16 +1334,31 @@ const CreateInterviewAgent = ({
               <p className="text-sm text-gray-500">{safeT('smart_farmer_building')}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Currency Switcher */}
+            <div className="bg-white/80 rounded-xl px-2 py-1 border border-gray-200 shadow-sm">
+              <CurrencySwitcher />
+            </div>
+
+            {/* Voice Toggle - Updated with disabled state and "Generating... Please Wait" */}
             <div className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl px-3 py-2 border border-white-30">
               <Mic className={`w-5 h-5 text-white ${isSpeaking ? 'animate-pulse' : ''}`} />
               <button
                 onClick={() => setVoiceEnabled(!voiceEnabled)}
-                className="text-white font-medium text-sm focus:outline-none"
+                disabled={currentStep === "generating" || currentStep === "redirecting"}
+                className={`text-white font-medium focus:outline-none ${
+                  currentStep === "generating" || currentStep === "redirecting"
+                    ? 'opacity-50 cursor-not-allowed text-lg'
+                    : 'text-sm'
+                }`}
               >
-                {voiceEnabled ? safeT('voice_on') : safeT('voice_off')}
+                {currentStep === "generating" || currentStep === "redirecting"
+                  ? "Generating... Please Wait"
+                  : (voiceEnabled ? safeT('voice_on') : safeT('voice_off'))}
               </button>
             </div>
+
+            {/* Start Setup Button - Updated with "Generating... Please Wait" */}
             <button
               onClick={startVoiceSetup}
               disabled={!voiceEnabled || currentStep !== "idle"}
@@ -1285,7 +1368,9 @@ const CreateInterviewAgent = ({
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
             >
-              {currentStep === "idle" ? safeT('start_setup') : safeT('loading')}
+              {currentStep === "generating" || currentStep === "redirecting"
+                ? "Generating... Please Wait"
+                : (currentStep === "idle" ? safeT('start_setup') : safeT('loading'))}
             </button>
           </div>
         </div>
@@ -1357,14 +1442,12 @@ const CreateInterviewAgent = ({
                       onClick={async () => {
                         const selected = farmerDetails.availableIngredients;
                         const allOptions = allQuestions[configStep]?.options || [];
-                        // --- START OF CHANGE: validate ALL ingredients are selected ---
                         if (selected.length !== allOptions.length) {
                           const warningMsg = safeT('select_all_ingredients_warning');
                           toast.warning(warningMsg);
                           await voiceAssistantRef.current?.speak(warningMsg);
                           return;
                         }
-                        // --- END OF CHANGE ---
                         processAnswer(selected.join(', '));
                       }}
                       className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2.5 rounded-xl font-medium"

@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -31,6 +30,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { useCurrency } from '@/lib/context/CurrencyContext';
+import { COUNTRY_CURRENCY_MAP } from "@/lib/config/currency";
 
 interface AgentProps {
   userName: string;
@@ -51,21 +51,53 @@ const Agent = ({
   sessionData
 }: AgentProps) => {
   const { t, ready, i18n } = useOfflineTranslation();
-  const { currency } = useCurrency();
+  const { currency, setCountry, country } = useCurrency();
 
-  console.log("🔍 [Agent] Component mounted with sessionData:", sessionData);
-  console.log("🔍 [Agent] sessionData.structuredList length:", sessionData?.structuredList?.length);
+  // Debug logging
+  console.log("🔍 [Agent] Mounted with sessionData:", sessionData);
+  console.log("🔍 [Agent] Context country:", country);
+  console.log("🔍 [Agent] Context currency:", currency);
+  console.log("🔍 [Agent] sessionData.country:", sessionData?.country);
 
-  const getDisplaySymbol = (): string => currency.symbol || 'Ksh';
+  // Force sync country from session data
+  useEffect(() => {
+    const sessionCountry = sessionData?.country;
+    if (sessionCountry) {
+      // Always call setCountry to ensure it updates
+      setCountry(sessionCountry);
+      console.log(`🔄 [Agent] Forced setCountry to: ${sessionCountry}`);
+    }
+  }, [sessionData?.country, setCountry]);
+
+  // Fallback: if context currency symbol is still 'Ksh' but session country is Uganda,
+  // we directly use the session country's currency symbol.
+  const getDisplaySymbol = (): string => {
+    // If context currency is already not 'Ksh' (e.g., 'USh'), use it.
+    if (currency.symbol && currency.symbol !== 'Ksh') {
+      return currency.symbol;
+    }
+    // Otherwise, try to derive from session country
+    if (sessionData?.country) {
+      const sessionCountry = sessionData.country.toLowerCase();
+      const mapped = COUNTRY_CURRENCY_MAP[sessionCountry];
+      if (mapped && mapped.symbol) {
+        console.log(`🔄 [Agent] Fallback: using symbol ${mapped.symbol} for country ${sessionCountry}`);
+        return mapped.symbol;
+      }
+    }
+    return 'Ksh'; // ultimate fallback
+  };
 
   const getSpokenCurrencyName = (): string => {
     if (i18n.language === 'es') return 'Euros';
     const lang = i18n.language;
-    switch (currency.code) {
+    // Use the same fallback logic if needed
+    const code = currency.code || (sessionData?.country ? COUNTRY_CURRENCY_MAP[sessionData.country.toLowerCase()]?.code : 'KES');
+    switch (code) {
       case 'KES': return lang === 'fr' ? 'Shillings kényans' : lang === 'sw' ? 'Shilingi za Kenya' : 'Kenyan Shillings';
       case 'UGX': return lang === 'fr' ? 'Shillings ougandais' : lang === 'sw' ? 'Shilingi za Uganda' : 'Ugandan Shillings';
       case 'TZS': return lang === 'fr' ? 'Shillings tanzaniens' : lang === 'sw' ? 'Shilingi za Tanzania' : 'Tanzanian Shillings';
-      default: return currency.name;
+      default: return currency.name || 'Kenyan Shillings';
     }
   };
 
@@ -87,18 +119,16 @@ const Agent = ({
 
     console.log("🎯 [getNutritionalTargets] breedKey:", breedKey, "stageKey:", stageKey);
 
-    // Broiler targets
     if (breedKey === 'broiler') {
       if (stageKey === 'starter') {
         return { protein: 22.0, calcium: 0.9, energy: 2900 };
       } else if (stageKey === 'finisher') {
         return { protein: 20.0, calcium: 0.8, energy: 2950 };
       } else {
-        return { protein: 20.0, calcium: 0.8, energy: 2950 }; // fallback to finisher
+        return { protein: 20.0, calcium: 0.8, energy: 2950 };
       }
     }
 
-    // Dual-purpose (Sasso, local, layers, etc.)
     if (stageKey === 'starter') {
       return { protein: 20.15, calcium: 1.0, energy: 2800 };
     } else if (stageKey === 'grower') {
@@ -106,125 +136,9 @@ const Agent = ({
     } else if (stageKey === 'layer') {
       return { protein: 17.04, calcium: 3.8, energy: 2750 };
     } else {
-      return { protein: 16.7, calcium: 0.9, energy: 2700 }; // fallback grower
+      return { protein: 16.7, calcium: 0.9, energy: 2700 };
     }
   };
-
-  // ===== TRANSFORM structuredList: ingredient_table → bullet list, nutritional_info → enhanced =====
-  useEffect(() => {
-    if (sessionData?.structuredList) {
-      console.log("📋 [useEffect] Starting transformation of structuredList");
-      console.log("📋 [useEffect] Original structuredList keys:", sessionData.structuredList.map((item: any) => item.key));
-
-      const breed = sessionData?.breed || '';
-      const stage = sessionData?.stage || '';
-
-      const transformed = sessionData.structuredList.map((item: any) => {
-        // 1. ingredient_table → bullet list
-        if (item.key === 'ingredient_table') {
-          const ingredients = sessionData?.feedResult?.ingredients || [];
-          const totalCost = sessionData?.feedResult?.totalCost || 0;
-          const displaySymbol = getDisplaySymbol();
-
-          let bulletList = '';
-          ingredients.forEach((ing: any) => {
-            const amount = ing.amountKg.toFixed(2);
-            const cost = displaySymbol + ' ' + ing.cost.toFixed(0);
-            bulletList += `• ${ing.name}: ${amount} kg (${cost})\n`;
-          });
-          bulletList += `\nTotal Cost: ${displaySymbol} ${totalCost.toFixed(0)}`;
-
-          return {
-            ...item,
-            params: { content: bulletList }
-          };
-        }
-
-        // 2. nutritional_info → enhanced with targets from backend
-        if (item.key === 'nutritional_info') {
-          const nutritionData = sessionData?.feedResult?.nutritionalSummary;
-          let actualProtein = nutritionData?.protein || 0;
-          let actualCalcium = nutritionData?.calcium || 0;
-          let actualEnergy = nutritionData?.energy || 0;
-
-          const targets = getNutritionalTargets(breed, stage);
-          let targetProtein = targets.protein;
-          let targetCalcium = targets.calcium;
-          let targetEnergy = targets.energy;
-
-          if (nutritionData?.targetProtein) {
-            targetProtein = nutritionData.targetProtein;
-          }
-          if (nutritionData?.targetCalcium) {
-            targetCalcium = nutritionData.targetCalcium;
-          }
-          if (nutritionData?.targetEnergy) {
-            targetEnergy = nutritionData.targetEnergy;
-          }
-
-          const tolerance = 0.05;
-          const isProteinMet = targetProtein > 0 ? Math.abs(actualProtein - targetProtein) / targetProtein < tolerance : false;
-          const isCalciumMet = targetCalcium > 0 ? Math.abs(actualCalcium - targetCalcium) / targetCalcium < tolerance : false;
-          const isEnergyMet = targetEnergy > 0 ? Math.abs(actualEnergy - targetEnergy) / targetEnergy < tolerance : false;
-          const allMet = isProteinMet && isCalciumMet && isEnergyMet;
-
-          let bulletLines: string[] = [];
-          bulletLines.push(`- Protein: ${actualProtein.toFixed(2)}% (Target: ${targetProtein}%) ${isProteinMet ? '✅' : '❌'}`);
-          bulletLines.push(`- Calcium: ${actualCalcium.toFixed(2)}% (Target: ${targetCalcium}%) ${isCalciumMet ? '✅' : '❌'}`);
-          bulletLines.push(`- Energy: ${actualEnergy.toFixed(0)} kcal/kg (Target: ${targetEnergy} kcal/kg) ${isEnergyMet ? '✅' : '❌'}`);
-
-          let adviceLines: string[] = [];
-          if (!isProteinMet) {
-            const diff = actualProtein - targetProtein;
-            const absDiff = Math.abs(diff).toFixed(1);
-            const direction = diff > 0 ? 'high' : 'low';
-            adviceLines.push(`  - Protein is ${absDiff}% too ${direction} - ${direction === 'high' ? 'Reduce protein sources (soya, fish, sunflower, cotton seed)' : 'Add more protein sources (soya bean meal or fish meal)'}`);
-          }
-          if (!isCalciumMet) {
-            const diff = actualCalcium - targetCalcium;
-            const absDiff = Math.abs(diff).toFixed(1);
-            const direction = diff > 0 ? 'high' : 'low';
-            adviceLines.push(`  - Calcium is ${absDiff}% too ${direction} - ${direction === 'high' ? 'Reduce lime or dcp' : 'Increase lime or dcp'}`);
-          }
-          if (!isEnergyMet) {
-            const diff = actualEnergy - targetEnergy;
-            const absDiff = Math.abs(diff).toFixed(0);
-            const direction = diff > 0 ? 'high' : 'low';
-            adviceLines.push(`  - Energy is ${absDiff} kcal/kg too ${direction} - ${direction === 'high' ? 'Reduce high-energy ingredients (maize, oil)' : 'Add more maize or vegetable oil'}`);
-          }
-
-          let summaryLine = allMet
-            ? '✅ All nutritional targets met! This feed is properly balanced for your birds.'
-            : '⚠️ Some nutritional targets are not met. Please review the formula:';
-
-          let enhancedContent = bulletLines.join('\n');
-          if (adviceLines.length > 0) {
-            enhancedContent += '\n\n' + summaryLine + '\n' + adviceLines.join('\n');
-          } else {
-            enhancedContent += '\n\n' + summaryLine;
-          }
-
-          return {
-            ...item,
-            params: { content: enhancedContent }
-          };
-        }
-
-        // For any other keys, leave unchanged
-        return item;
-      });
-
-      console.log("📋 [useEffect] Transformed structuredList keys:", transformed.map((item: any) => item.key));
-      // Specifically check if weekly_feed_plan exists
-      const hasWeeklyPlan = transformed.some((item: any) => item.key === 'weekly_feed_plan');
-      console.log("📋 [useEffect] weekly_feed_plan exists in transformed?", hasWeeklyPlan);
-
-      setStructuredList(transformed);
-    }
-    if (sessionData?.structuredFinancialAdvice) {
-      setStructuredFinancialAdvice(sessionData.structuredFinancialAdvice);
-    }
-  }, [sessionData]);
 
   const safeT = (key: string, params?: any): string => {
     try {
@@ -252,7 +166,6 @@ const Agent = ({
   const [recommendationStreams, setRecommendationStreams] = useState<{[key: number]: string}>({});
   const [activeStreamingRec, setActiveStreamingRec] = useState<number | null>(null);
 
-  // Farmers Comments State
   const [farmerComment, setFarmerComment] = useState<string>("");
   const [isCommentSubmitting, setIsCommentSubmitting] = useState<boolean>(false);
   const [commentSubmitted, setCommentSubmitted] = useState<boolean>(false);
@@ -264,7 +177,6 @@ const Agent = ({
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const abortAnimationRef = useRef<number | null>(null);
 
-  // Poultry feed specific data from session
   const farmerName = sessionData?.farmerName || userName || "Farmer";
   const farmerCountry = sessionData?.country || 'kenya';
   const breed = sessionData?.breed || '';
@@ -274,6 +186,130 @@ const Agent = ({
   const subCounty = sessionData?.subCounty || '';
   const ward = sessionData?.ward || '';
   const village = sessionData?.village || '';
+
+  // ===== TRANSFORM structuredList with currency replacement =====
+  const transformedStructuredList = useMemo(() => {
+    if (!sessionData?.structuredList) return [];
+
+    const breed = sessionData?.breed || '';
+    const stage = sessionData?.stage || '';
+    const displaySymbol = getDisplaySymbol();
+
+    return sessionData.structuredList.map((item: any) => {
+      if (item.key === 'ingredient_table') {
+        const ingredients = sessionData?.feedResult?.ingredients || [];
+        const totalCost = sessionData?.feedResult?.totalCost || 0;
+
+        let bulletList = '';
+        ingredients.forEach((ing: any) => {
+          const amount = ing.amountKg.toFixed(2);
+          const cost = displaySymbol + ' ' + ing.cost.toFixed(0);
+          bulletList += `• ${ing.name}: ${amount} kg (${cost})\n`;
+        });
+        bulletList += `\nTotal Cost: ${displaySymbol} ${totalCost.toFixed(0)}`;
+
+        return {
+          ...item,
+          params: { content: bulletList }
+        };
+      }
+
+      if (item.key === 'nutritional_info') {
+        const nutritionData = sessionData?.feedResult?.nutritionalSummary;
+        let actualProtein = nutritionData?.protein || 0;
+        let actualCalcium = nutritionData?.calcium || 0;
+        let actualEnergy = nutritionData?.energy || 0;
+
+        const targets = getNutritionalTargets(breed, stage);
+        let targetProtein = targets.protein;
+        let targetCalcium = targets.calcium;
+        let targetEnergy = targets.energy;
+
+        if (nutritionData?.targetProtein) targetProtein = nutritionData.targetProtein;
+        if (nutritionData?.targetCalcium) targetCalcium = nutritionData.targetCalcium;
+        if (nutritionData?.targetEnergy) targetEnergy = nutritionData.targetEnergy;
+
+        const tolerance = 0.05;
+        const isProteinMet = targetProtein > 0 ? Math.abs(actualProtein - targetProtein) / targetProtein < tolerance : false;
+        const isCalciumMet = targetCalcium > 0 ? Math.abs(actualCalcium - targetCalcium) / targetCalcium < tolerance : false;
+        const isEnergyMet = targetEnergy > 0 ? Math.abs(actualEnergy - targetEnergy) / targetEnergy < tolerance : false;
+        const allMet = isProteinMet && isCalciumMet && isEnergyMet;
+
+        let bulletLines: string[] = [];
+        bulletLines.push(`- Protein: ${actualProtein.toFixed(2)}% (Target: ${targetProtein}%) ${isProteinMet ? '✅' : '❌'}`);
+        bulletLines.push(`- Calcium: ${actualCalcium.toFixed(2)}% (Target: ${targetCalcium}%) ${isCalciumMet ? '✅' : '❌'}`);
+        bulletLines.push(`- Energy: ${actualEnergy.toFixed(0)} kcal/kg (Target: ${targetEnergy} kcal/kg) ${isEnergyMet ? '✅' : '❌'}`);
+
+        let adviceLines: string[] = [];
+        if (!isProteinMet) {
+          const diff = actualProtein - targetProtein;
+          const absDiff = Math.abs(diff).toFixed(1);
+          const direction = diff > 0 ? 'high' : 'low';
+          adviceLines.push(`  - Protein is ${absDiff}% too ${direction} - ${direction === 'high' ? 'Reduce protein sources (soya, fish, sunflower, cotton seed)' : 'Add more protein sources (soya bean meal or fish meal)'}`);
+        }
+        if (!isCalciumMet) {
+          const diff = actualCalcium - targetCalcium;
+          const absDiff = Math.abs(diff).toFixed(1);
+          const direction = diff > 0 ? 'high' : 'low';
+          adviceLines.push(`  - Calcium is ${absDiff}% too ${direction} - ${direction === 'high' ? 'Reduce lime or dcp' : 'Increase lime or dcp'}`);
+        }
+        if (!isEnergyMet) {
+          const diff = actualEnergy - targetEnergy;
+          const absDiff = Math.abs(diff).toFixed(0);
+          const direction = diff > 0 ? 'high' : 'low';
+          adviceLines.push(`  - Energy is ${absDiff} kcal/kg too ${direction} - ${direction === 'high' ? 'Reduce high-energy ingredients (maize, oil)' : 'Add more maize or vegetable oil'}`);
+        }
+
+        let summaryLine = allMet
+          ? '✅ All nutritional targets met! This feed is properly balanced for your birds.'
+          : '⚠️ Some nutritional targets are not met. Please review the formula:';
+
+        let enhancedContent = bulletLines.join('\n');
+        if (adviceLines.length > 0) {
+          enhancedContent += '\n\n' + summaryLine + '\n' + adviceLines.join('\n');
+        } else {
+          enhancedContent += '\n\n' + summaryLine;
+        }
+
+        return {
+          ...item,
+          params: { content: enhancedContent }
+        };
+      }
+
+      return item;
+    }).map((item: any) => {
+      if (item.params?.content && typeof item.params.content === 'string') {
+        let content = item.params.content;
+        content = content.replace(/\{\{CURRENCY\}\}/g, getDisplaySymbol());
+        content = content.replace(/Ksh/g, getDisplaySymbol());
+        return { ...item, params: { ...item.params, content } };
+      }
+      return item;
+    });
+  }, [sessionData, getDisplaySymbol]);
+
+  const transformedFinancialAdvice = useMemo(() => {
+    if (!sessionData?.structuredFinancialAdvice) return null;
+    const advice = sessionData.structuredFinancialAdvice;
+    if (advice.params?.content && typeof advice.params.content === 'string') {
+      let content = advice.params.content;
+      content = content.replace(/\{\{CURRENCY\}\}/g, getDisplaySymbol());
+      content = content.replace(/Ksh/g, getDisplaySymbol());
+      return { ...advice, params: { ...advice.params, content } };
+    }
+    return advice;
+  }, [sessionData, getDisplaySymbol]);
+
+  useEffect(() => {
+    setStructuredList(transformedStructuredList);
+  }, [transformedStructuredList]);
+
+  useEffect(() => {
+    if (transformedFinancialAdvice) {
+      setStructuredFinancialAdvice(transformedFinancialAdvice);
+    }
+  }, [transformedFinancialAdvice]);
 
   // Submit Farmers Comment
   const submitFarmerComment = async () => {
@@ -298,48 +334,25 @@ const Agent = ({
       if (res.ok) {
         setCommentSubmitted(true);
         setFarmerComment('');
-
-        // Voice-only success feedback using the existing translation key.
-        // No visible toast is shown.
-        const successMessage = safeT(
-          'feedback_saved',
-          'your comments have been received successfully!'
-        );
-
+        const successMessage = safeT('feedback_saved', 'your comments have been received successfully!');
         await speakWithVoice(successMessage);
-
-        // Clear the submitted state after the voice message finishes.
         setCommentSubmitted(false);
       } else {
-        // Voice-only failure feedback using the existing translation key.
-        // No visible toast is shown.
-        const failedMessage = safeT(
-          'feedback_failed',
-          'your comment not received. Please try again later.'
-        );
-
+        const failedMessage = safeT('feedback_failed', 'your comment not received. Please try again later.');
         await speakWithVoice(failedMessage);
-
         setCommentSubmitted(false);
       }
     } catch (error: any) {
       console.error("Error submitting farmer comment:", error);
-
-      // Voice-only failure feedback. No visible toast is shown.
-      const failedMessage = safeT(
-        'feedback_failed',
-        'your comment not received. Please try again later.'
-      );
-
+      const failedMessage = safeT('feedback_failed', 'your comment not received. Please try again later.');
       await speakWithVoice(failedMessage);
-
       setCommentSubmitted(false);
     } finally {
       setIsCommentSubmitting(false);
     }
   };
 
-  // Voice setup
+  // Voice setup (unchanged)
   const recognitionLanguage = (() => {
     const lang = i18n.language || 'en';
     if (lang === 'en-GB') return 'en-GB';
@@ -352,7 +365,7 @@ const Agent = ({
 
   const getBestVoice = () => {
     const voices = window.speechSynthesis.getVoices();
-
+    // ... (all the voice selection logic – unchanged)
     const findBritishEnglishFemale = (): SpeechSynthesisVoice | null => {
       const femaleNames = ['libby', 'hazel', 'susan', 'maisie', 'sonia', 'kate', 'victoria', 'millie', 'olivia', 'google uk english female', 'microsoft libby', 'microsoft hazel', 'microsoft susan', 'microsoft maisie', 'microsoft sonia', 'british english female', 'uk english female'];
       for (const name of femaleNames) {
@@ -529,7 +542,7 @@ const Agent = ({
   const prepareForSpeech = (text: string): string => {
     let speechText = cleanText(text);
     const currencyName = getSpokenCurrencyName();
-    const symbol = currency.symbol;
+    const symbol = getDisplaySymbol();
     const escapedSymbol = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     speechText = speechText.replace(new RegExp(`${escapedSymbol}\\s`, 'g'), `${currencyName} `);
     speechText = speechText.replace(new RegExp(`\\b${escapedSymbol}\\b`, 'g'), currencyName);
@@ -640,7 +653,7 @@ const Agent = ({
     });
   };
 
-  // ========== STREAM ALL RECOMMENDATIONS WITH VOICE SCRIPT SUPPORT ==========
+  // ========== STREAM ALL RECOMMENDATIONS ==========
   const streamAllRecommendations = async () => {
     if (structuredList.length === 0 || recommendationsSpoken) return;
 
@@ -650,7 +663,6 @@ const Agent = ({
 
     const currencyName = getSpokenCurrencyName();
 
-    // Check for voice_script first
     const voiceScriptItem = structuredList.find((item: any) => item.key === 'voice_script');
 
     if (voiceScriptItem && voiceScriptItem.params?.content) {
@@ -781,7 +793,6 @@ const Agent = ({
     return safeT('start_voice_session', 'Hear Recommendations');
   };
 
-  // ========== HELPER TO CHECK HTML CONTENT ==========
   const isHTMLContent = (content: string): boolean => {
     return content.trim().startsWith('<table') || content.trim().startsWith('<style');
   };
@@ -817,7 +828,6 @@ const Agent = ({
       processedText = processedText.replace(/Ksh/g, displaySymbol);
     }
 
-    // Determine icon and title
     let icon = null;
     let title = '';
     if (item.key === 'feed_summary') { icon = <Package className="w-5 h-5" />; title = safeT('feed_summary_title', 'Feed Summary'); }
@@ -840,7 +850,6 @@ const Agent = ({
     }
     else { icon = <Sparkles className="w-5 h-5" />; title = item.key; }
 
-    // Skip rendering voice_script as visual – it's only for voice
     if (item.key === 'voice_script') {
       return (
         <div key={idx} className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-4 border-2 border-purple-300">
@@ -852,7 +861,6 @@ const Agent = ({
       );
     }
 
-    // Handle ingredient_list (plain text list) – grid display
     if (item.key === 'ingredient_list') {
       const lines = processedText.split('\n').filter(line => line.trim());
       return (
@@ -896,7 +904,6 @@ const Agent = ({
       );
     }
 
-    // If HTML content (rare, but keep for safety)
     if (isHTMLContent(processedText)) {
       return (
         <div
@@ -924,7 +931,6 @@ const Agent = ({
       );
     }
 
-    // Otherwise, regular text rendering with karaoke
     const lines = processedText.split(/\n/);
     const progressPercent = (displayedText.length / displayContent.length) * 100;
 
@@ -1070,7 +1076,7 @@ const Agent = ({
         </div>
       )}
 
-      {/* Location Info (if available) */}
+      {/* Location Info */}
       {(county || subCounty || ward || village) && (
         <div className="bg-white rounded-xl p-4 border border-gray-200">
           <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">

@@ -14,6 +14,59 @@ interface CurrencyContextType {
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
 
+/**
+ * Normalize a display country name (e.g., from dropdown) to the key used in COUNTRY_CURRENCY_MAP.
+ * Handles accents, parentheses, "and", "&", and special cases.
+ */
+function normalizeCountryName(displayName: string): string {
+  // Special case mapping for names that don't follow simple transformations
+  const specialMappings: Record<string, string> = {
+    'côte d\'ivoire': 'ivorycoast',
+    'cote d\'ivoire': 'ivorycoast',
+    'congo (brazzaville)': 'congobrazzaville',
+    'congo (kinshasa)': 'congokinshasa',
+    'dominican republic': 'dominicanrepublic',
+    'el salvador': 'elsalvador',
+    'equatorial guinea': 'equatorialguinea',
+    'saint kitts and nevis': 'saintkittsandnevis',
+    'saint lucia': 'saintlucia',
+    'saint vincent and the grenadines': 'saintvincentandthegrenadines',
+    'sierra leone': 'sierraleone',
+    'south africa': 'southafrica',
+    'south sudan': 'southsudan',
+    'trinidad and tobago': 'trinidadandtobago',
+    'united kingdom': 'unitedkingdom',
+    'united states': 'unitedstates',
+    'usa/canada': 'unitedstates', // from phone codes, but not in dropdown
+    'usa': 'unitedstates',
+    'uk': 'unitedkingdom',
+  };
+
+  let normalized = displayName.trim().toLowerCase();
+
+  // Check special mapping first
+  if (specialMappings[normalized]) {
+    return specialMappings[normalized];
+  }
+
+  // Remove accents (diacritics)
+  normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // Remove parentheses and their content (e.g., "(Brazzaville)")
+  normalized = normalized.replace(/\([^)]*\)/g, '');
+
+  // Replace " & " with "and"
+  normalized = normalized.replace(/\s*&\s*/g, 'and');
+
+  // Replace " and " with "and"
+  normalized = normalized.replace(/\s+and\s+/g, 'and');
+
+  // Remove all other non-alphanumeric characters (keep only letters and numbers)
+  normalized = normalized.replace(/[^a-z0-9]/g, '');
+
+  return normalized;
+}
+
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const { i18n } = useTranslation();
   const [country, setCountryState] = useState<string>(DEFAULT_COUNTRY);
@@ -24,7 +77,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const savedCountry = localStorage.getItem('selected-country');
     if (savedCountry) {
-      const normalizedSaved = savedCountry.toLowerCase(); // Normalize case
+      const normalizedSaved = savedCountry.toLowerCase(); // Assume saved is already normalized
       if (COUNTRY_CURRENCY_MAP[normalizedSaved]) {
         setCountryState(normalizedSaved);
         setCurrencyState(COUNTRY_CURRENCY_MAP[normalizedSaved]);
@@ -68,18 +121,32 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
 
   // Called from interview when user selects country – NORMALIZE the input
   const handleSetCountry = (newCountry: string) => {
-    const normalized = newCountry.toLowerCase(); // ✅ Convert to lowercase
+    const normalized = normalizeCountryName(newCountry);
     if (COUNTRY_CURRENCY_MAP[normalized]) {
       setCountryState(normalized);
-      // If user hasn't manually overridden currency, update it to the country's default
-      if (!userSelectedCurrency) {
-        setCurrencyState(COUNTRY_CURRENCY_MAP[normalized]);
-      }
+      // ✅ ALWAYS update the currency to match the selected country
+      setCurrencyState(COUNTRY_CURRENCY_MAP[normalized]);
+      // ✅ Reset manual override so that future language changes can work
+      setUserSelectedCurrency(false);
       localStorage.setItem('selected-country', normalized);
+      localStorage.removeItem('userSelectedCurrency');
+    } else {
+      // Fallback: try lowercasing directly (some may already be correct)
+      const fallback = newCountry.toLowerCase();
+      if (COUNTRY_CURRENCY_MAP[fallback]) {
+        setCountryState(fallback);
+        // ✅ Also update currency here
+        setCurrencyState(COUNTRY_CURRENCY_MAP[fallback]);
+        setUserSelectedCurrency(false);
+        localStorage.setItem('selected-country', fallback);
+        localStorage.removeItem('userSelectedCurrency');
+      } else {
+        console.warn(`Currency: No mapping found for country "${newCountry}" (normalized: "${normalized}")`);
+      }
     }
   };
 
-  // Manual override from currency switcher
+  // Manual override from currency switcher (kept for backward compatibility, but now also resets country? We'll leave as is)
   const setDisplayCurrency = (currencyCode: string) => {
     // Find the first country that uses this currency
     const matchingCountry = Object.keys(COUNTRY_CURRENCY_MAP).find(

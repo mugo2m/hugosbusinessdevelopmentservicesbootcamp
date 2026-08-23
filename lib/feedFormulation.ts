@@ -1,5 +1,3 @@
-
-
 // lib/feedFormulation.ts
 // Complete Poultry Feed Formulation Engine with Fixed Recipes and Cost Ranking
 // Recipes: "hugos poultry recipes" – includes Maize Germ and Wheat Germ.
@@ -990,10 +988,11 @@ export async function formulateFeed(params: {
     }
   });
 
+  // ★★★ UPDATED: total_cost now uses {{CURRENCY}} placeholder ★★★
   structuredList.push({
     key: "total_cost",
     params: {
-      content: `Total Cost: ${totalCost.toFixed(2)}`
+      content: `Total Cost: {{CURRENCY}} ${totalCost.toFixed(2)}`
     }
   });
 
@@ -1008,46 +1007,47 @@ export async function formulateFeed(params: {
   console.log(`📊 [formulateFeed] numberOfBirds > 0? ${numberOfBirds > 0}`);
   if (numberOfBirds > 0) {
     console.log("📊 [formulateFeed] Generating weekly feed plan content...");
-    let weeklyContent = `**Cost per kg:** Ksh ${costPerKg.toFixed(2)}\n\n`;
+    // ★★★ UPDATED: Use {{CURRENCY}} placeholder instead of Ksh ★★★
+    let weeklyContent = `**Cost per kg:** {{CURRENCY}} ${costPerKg.toFixed(2)}\n\n`;
     const entries = weeklyPlan.weeklyEntries;
 
     if (stageKey === 'layer') {
       // Layer phases – bold and "Phase:" removed
       for (const entry of entries) {
         weeklyContent += `Weeks ${entry.startWeek}–${entry.endWeek} (${entry.endWeek - entry.startWeek + 1} weeks) – ${entry.dailyIntake}g feed per bird, ${entry.productionPercent}% egg production\n`;
-        weeklyContent += `• Week ${entry.startWeek}–${entry.endWeek}: ${entry.dailyIntake}g feed per bird per day, total feed ${entry.weeklyFeed.toFixed(1)} kg per week, @ Ksh ${costPerKg.toFixed(2)} per kg feed will cost Ksh ${entry.weeklyCost.toFixed(2)}\n`;
+        weeklyContent += `• Week ${entry.startWeek}–${entry.endWeek}: ${entry.dailyIntake}g feed per bird per day, total feed ${entry.weeklyFeed.toFixed(1)} kg per week, @ {{CURRENCY}} ${costPerKg.toFixed(2)} per kg feed will cost {{CURRENCY}} ${entry.weeklyCost.toFixed(2)}\n`;
         weeklyContent += `• Total feed: ${(entry.weeklyFeed * (entry.endWeek - entry.startWeek + 1)).toFixed(1)} kg\n`;
-        weeklyContent += `• Total feed cost: Ksh ${(entry.weeklyCost * (entry.endWeek - entry.startWeek + 1)).toFixed(2)}\n`;
+        weeklyContent += `• Total feed cost: {{CURRENCY}} ${(entry.weeklyCost * (entry.endWeek - entry.startWeek + 1)).toFixed(2)}\n`;
         weeklyContent += `• Eggs produced: ${(entry.eggsPerWeek * (entry.endWeek - entry.startWeek + 1)).toFixed(0)} eggs\n`;
-        weeklyContent += `• Egg revenue (@ Ksh ${pricePerEgg}/egg): Ksh ${(entry.eggRevenuePerWeek * (entry.endWeek - entry.startWeek + 1)).toFixed(2)}\n\n`;
+        weeklyContent += `• Egg revenue (@ {{CURRENCY}} ${pricePerEgg}/egg): {{CURRENCY}} ${(entry.eggRevenuePerWeek * (entry.endWeek - entry.startWeek + 1)).toFixed(2)}\n\n`;
       }
       // Total summary for layer
       weeklyContent += `**Total Layer Stage Summary (Weeks 19–100)**\n`;
       weeklyContent += `• Total feed: ${weeklyPlan.totalFeed.toFixed(1)} kg\n`;
-      weeklyContent += `• Total feed cost: Ksh ${weeklyPlan.totalCost.toFixed(2)}\n`;
+      weeklyContent += `• Total feed cost: {{CURRENCY}} ${weeklyPlan.totalCost.toFixed(2)}\n`;
       weeklyContent += `• Total eggs produced: ${weeklyPlan.totalEggs.toFixed(0)} eggs\n`;
-      weeklyContent += `• Total egg revenue: Ksh ${weeklyPlan.eggRevenue.toFixed(2)}\n`;
+      weeklyContent += `• Total egg revenue: {{CURRENCY}} ${weeklyPlan.eggRevenue.toFixed(2)}\n`;
       if (salePricePerBird > 0) {
-        weeklyContent += `• Spent hen revenue (@ Ksh ${salePricePerBird}/bird): Ksh ${weeklyPlan.birdRevenue.toFixed(2)}\n`;
+        weeklyContent += `• Spent hen revenue (@ {{CURRENCY}} ${salePricePerBird}/bird): {{CURRENCY}} ${weeklyPlan.birdRevenue.toFixed(2)}\n`;
       }
-      weeklyContent += `• Total income: Ksh ${(weeklyPlan.eggRevenue + weeklyPlan.birdRevenue).toFixed(2)}\n`;
-      weeklyContent += `• Net profit: Ksh ${weeklyPlan.netProfit.toFixed(2)}\n`;
-      weeklyContent += `• Profit per bird: Ksh ${(weeklyPlan.netProfit / numberOfBirds).toFixed(2)}\n`;
+      weeklyContent += `• Total income: {{CURRENCY}} ${(weeklyPlan.eggRevenue + weeklyPlan.birdRevenue).toFixed(2)}\n`;
+      weeklyContent += `• Net profit: {{CURRENCY}} ${weeklyPlan.netProfit.toFixed(2)}\n`;
+      weeklyContent += `• Profit per bird: {{CURRENCY}} ${(weeklyPlan.netProfit / numberOfBirds).toFixed(2)}\n`;
     } else {
       // Chick, Grower, Broiler
       for (const entry of entries) {
         const weekLabel = entry.week ? `Week ${entry.week}` : `Week ${entry.startWeek}–${entry.endWeek}`;
-        weeklyContent += `• ${weekLabel}: ${entry.dailyIntake}g feed per bird per day, total feed ${entry.weeklyFeed.toFixed(1)} kg per week, @ Ksh ${costPerKg.toFixed(2)} per kg feed will cost Ksh ${entry.weeklyCost.toFixed(2)}\n`;
+        weeklyContent += `• ${weekLabel}: ${entry.dailyIntake}g feed per bird per day, total feed ${entry.weeklyFeed.toFixed(1)} kg per week, @ {{CURRENCY}} ${costPerKg.toFixed(2)} per kg feed will cost {{CURRENCY}} ${entry.weeklyCost.toFixed(2)}\n`;
       }
       weeklyContent += `\n**Total ${stage} Stage Summary**\n`;
       weeklyContent += `• Total feed: ${weeklyPlan.totalFeed.toFixed(1)} kg\n`;
-      weeklyContent += `• Total feed cost: Ksh ${weeklyPlan.totalCost.toFixed(2)}\n`;
+      weeklyContent += `• Total feed cost: {{CURRENCY}} ${weeklyPlan.totalCost.toFixed(2)}\n`;
       if (salePricePerBird > 0) {
-        weeklyContent += `• Bird revenue (@ Ksh ${salePricePerBird}/bird): Ksh ${weeklyPlan.birdRevenue.toFixed(2)}\n`;
-        weeklyContent += `• Net profit: Ksh ${weeklyPlan.netProfit.toFixed(2)}\n`;
-        weeklyContent += `• Profit per bird: Ksh ${(weeklyPlan.netProfit / numberOfBirds).toFixed(2)}\n`;
+        weeklyContent += `• Bird revenue (@ {{CURRENCY}} ${salePricePerBird}/bird): {{CURRENCY}} ${weeklyPlan.birdRevenue.toFixed(2)}\n`;
+        weeklyContent += `• Net profit: {{CURRENCY}} ${weeklyPlan.netProfit.toFixed(2)}\n`;
+        weeklyContent += `• Profit per bird: {{CURRENCY}} ${(weeklyPlan.netProfit / numberOfBirds).toFixed(2)}\n`;
       } else {
-        weeklyContent += `• Cost per bird: Ksh ${(weeklyPlan.totalCost / numberOfBirds).toFixed(2)}\n`;
+        weeklyContent += `• Cost per bird: {{CURRENCY}} ${(weeklyPlan.totalCost / numberOfBirds).toFixed(2)}\n`;
       }
     }
 

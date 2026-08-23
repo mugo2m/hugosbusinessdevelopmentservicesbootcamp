@@ -1752,5 +1752,7 @@
   "qa_harvest_dynamic": "Pour votre entreprise de {{crop}}, récoltez lorsque les doigts sont dodus et les bords anguleux arrondis, généralement 9-12 mois après la plantation. Coupez la grappe entière avec un couteau bien aiguisé. Manipulez avec soin. Rendement attendu : 20-30 tonnes par acre par an.",
   "qa_seed_dynamic": "Pour votre entreprise de {{crop}}, utilisez des rejets ou plants issue de culture tissulaire certifiés sans maladie. Plantez à 3m x 3m (450 plants/acre) pour haute densité. Chaque plant nécessite 50-100g de DAP à la plantation et 50-100g de CAN à 3 et 6 mois.",
   "qa_varieties_dynamic": "Pour votre entreprise de {{crop}}, les variétés recommandées incluent : Cavendish (qualité export), Williams (rendement élevé), Grand Naine (résistante aux maladies). Choisissez selon votre marché cible et les conditions climatiques locales.",
+  "enter_all_prices": "Veuillez saisir les prix pour tous les ingrédients sélectionnés.",
+  "confirm_selection": "Confirmer la sélection",
   "crop_benefits_fallback_note": "Données spécifiques non disponibles. Ce sont des valeurs typiques pour des cultures similaires."
 }

@@ -1,8 +1,9 @@
-
-// app/api/vapi/generate/route.ts – Complete Poultry Feed Formulation API (no reduction, no symbols)
+// app/api/vapi/generate/route.ts – Complete Poultry Feed Formulation API
+// Now preserves {{CURRENCY}} placeholders for client-side formatting
+// ADDED: cache.clear() to force fresh computation + detailed logging
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/firebase/admin";
-import { COUNTRY_CURRENCY_MAP, DEFAULT_CURRENCY } from "@/lib/config/currency";
+import { COUNTRY_CURRENCY_MAP } from "@/lib/config/currency";
 import { formulateFeed } from "@/lib/feedFormulation";
 
 console.log("🐔 Poultry Feed Formulation Route Loaded");
@@ -53,6 +54,10 @@ function formatCurrencyForCountry(amount: number, country: string = 'kenya'): st
 
 // ========== POST HANDLER ==========
 export async function POST(request: NextRequest) {
+  // 🔥 FORCE CACHE CLEAR – REMOVE THIS LINE AFTER TESTING
+  cache.clear();
+  console.log("🧹 Cache cleared (forced)");
+
   try {
     console.log("🐔 Poultry Feed Formulation API called");
     const body = await request.json();
@@ -77,7 +82,6 @@ export async function POST(request: NextRequest) {
       farmerName,
       ingredientPrices,
       availableIngredients = [],
-      // NEW FIELDS
       numberOfBirds = 0,
       salePricePerBird = 0,
       pricePerEgg = 0,
@@ -142,6 +146,11 @@ export async function POST(request: NextRequest) {
           (async () => {
             const result = await formulateFeed(formulateParams);
             console.log("✅ [POST] formulateFeed returned result. structuredList keys:", result.structuredList.map(item => item.key));
+            // 🔍 Log the actual content of total_cost and weekly_feed_plan
+            const totalCostItem = result.structuredList.find((item: any) => item.key === 'total_cost');
+            const weeklyPlanItem = result.structuredList.find((item: any) => item.key === 'weekly_feed_plan');
+            console.log("🔍 [POST] total_cost content:", totalCostItem?.params?.content);
+            console.log("🔍 [POST] weekly_feed_plan content (first 200 chars):", weeklyPlanItem?.params?.content?.substring(0, 200));
             return result;
           })(),
           30000,
@@ -209,38 +218,24 @@ export async function POST(request: NextRequest) {
 `;
 
     // ========== BUILD NEW STRUCTURED LIST ==========
+    // ✅ Keep all items from feedResult.structuredList except ingredient_list.
+    // We replace ingredient_list with ingredient_table (HTML).
+    // We DO NOT modify total_cost or weekly_feed_plan – they keep {{CURRENCY}} placeholders.
     console.log("🔄 [POST] Building new structured list from feedResult.structuredList");
     const newStructuredList: any[] = [];
     for (const item of feedResult.structuredList) {
       if (item.key === 'ingredient_list') {
+        // Replace with HTML table
         newStructuredList.push({
           key: 'ingredient_table',
           params: { content: tableHTML }
         });
         console.log(`🔄 [POST] Replaced ingredient_list with ingredient_table`);
-      } else if (item.key === 'total_cost') {
-        console.log(`🔄 [POST] Skipping total_cost (will be re-added later)`);
-        continue;
       } else {
+        // Keep everything else as-is (including total_cost and weekly_feed_plan with {{CURRENCY}})
         newStructuredList.push(item);
-        console.log(`🔄 [POST] Added item with key: ${item.key}`);
+        console.log(`🔄 [POST] Kept item with key: ${item.key}`);
       }
-    }
-
-    // Re-add total cost after ingredient table
-    const totalCostItem = {
-      key: "total_cost",
-      params: {
-        content: `Total Cost: ${totalFormatted}`
-      }
-    };
-    const tableIndex = newStructuredList.findIndex(item => item.key === 'ingredient_table');
-    if (tableIndex !== -1) {
-      newStructuredList.splice(tableIndex + 1, 0, totalCostItem);
-      console.log(`🔄 [POST] Inserted total_cost after ingredient_table`);
-    } else {
-      newStructuredList.push(totalCostItem);
-      console.log(`🔄 [POST] Pushed total_cost at end`);
     }
 
     feedResult.structuredList = newStructuredList;
@@ -248,6 +243,12 @@ export async function POST(request: NextRequest) {
     console.log("📋 [POST] Final structuredList keys:", newStructuredList.map(item => item.key));
     const hasWeeklyPlan = newStructuredList.some(item => item.key === 'weekly_feed_plan');
     console.log(`📋 [POST] weekly_feed_plan exists in final list? ${hasWeeklyPlan}`);
+
+    // 🔍 Log final content of total_cost and weekly_feed_plan after transformation
+    const finalTotalCost = newStructuredList.find((item: any) => item.key === 'total_cost');
+    const finalWeeklyPlan = newStructuredList.find((item: any) => item.key === 'weekly_feed_plan');
+    console.log("🔍 [POST] FINAL total_cost content:", finalTotalCost?.params?.content);
+    console.log("🔍 [POST] FINAL weekly_feed_plan content (first 200 chars):", finalWeeklyPlan?.params?.content?.substring(0, 200));
 
     // ========== CREATE SESSION ==========
     const sessionRef = db.collection("farmer_sessions").doc();
@@ -269,7 +270,6 @@ export async function POST(request: NextRequest) {
       ward: ward || '',
       village: village || '',
       country: normalizedCountry,
-      // NEW FIELDS
       numberOfBirds: parseFloat(numberOfBirds) || 0,
       salePricePerBird: parseFloat(salePricePerBird) || 0,
       pricePerEgg: parseFloat(pricePerEgg) || 0,
