@@ -406,7 +406,7 @@
   "phone_placeholder": "712345678",
   "type_answer": "Type your answer here...",
   "ready_for_answer": "Ready for your answer...",
-   "question_country": "Did you know that feed alone takes up more than 85% of the total cost of poultry production? we will reduce that cost by 20 to 30 % : by formulating the feed for you using locally available ingredients We will ensure you use more of cheap ingredients and less of most costly ingredients, or replace expensive ingredients with cheap ingredients respectively, while maintaining a nutritionally balanced home made feed for chick ,growers and layers mash for all breeds To do so you will tell us about your birds and all available feed ingredients available within your locallity To start with: Which country do you come from?",
+   "question_country": "Did you know that feed alone takes up more than 85% of the total cost of poultry production? we will reduce that cost by 20 to 30 % : by formulating the feed for you using locally available ingredients : We will ensure you use more of cheap ingredients and less of most costly ingredients: or replace expensive ingredients with cheap ingredients respectively: while maintaining a nutritionally balanced home made feed : for chick ,growers and layers mash :for all breeds : To do so you will tell us about your birds : and all available feed ingredients available : within your locallity :To start with: Which country do you come from?",
   "question_soil_test": "Have you done a comprehensive soil test for your enterprise?",
   "question_crop_enterprise": "Which crop enterprise will you invest in?",
   "question_crop_varieties": "Which variety will you grow for your {{crop}} enterprise?",

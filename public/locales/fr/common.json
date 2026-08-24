@@ -1754,5 +1754,9 @@
   "qa_varieties_dynamic": "Pour votre entreprise de {{crop}}, les variétés recommandées incluent : Cavendish (qualité export), Williams (rendement élevé), Grand Naine (résistante aux maladies). Choisissez selon votre marché cible et les conditions climatiques locales.",
   "enter_all_prices": "Veuillez saisir les prix pour tous les ingrédients sélectionnés.",
   "confirm_selection": "Confirmer la sélection",
+  "question_breed": "Quelle race de volaille élevez-vous ?",
+  "question_stage": "À quel stade se trouvent vos oiseaux ?",
+  "question_quantity": "Combien de kilogrammes voulez-vous formuler ?",
+
   "crop_benefits_fallback_note": "Données spécifiques non disponibles. Ce sont des valeurs typiques pour des cultures similaires."
 }
