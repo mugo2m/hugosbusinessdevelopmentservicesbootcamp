@@ -1,6 +1,7 @@
 // app/api/vapi/generate/route.ts – Complete Poultry Feed Formulation API
 // Now preserves {{CURRENCY}} placeholders for client-side formatting
 // ADDED: cache.clear() to force fresh computation + detailed logging
+// UPDATED: Accepts 'language' from request body and passes it to formulateFeed for localized content.
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/firebase/admin";
 import { COUNTRY_CURRENCY_MAP } from "@/lib/config/currency";
@@ -85,11 +86,13 @@ export async function POST(request: NextRequest) {
       numberOfBirds = 0,
       salePricePerBird = 0,
       pricePerEgg = 0,
+      language, // <-- NEW: extract the language
     } = body;
 
     console.log(`🔢 [POST] Extracted numberOfBirds: ${numberOfBirds} (type: ${typeof numberOfBirds})`);
     console.log(`🔢 [POST] Extracted salePricePerBird: ${salePricePerBird}`);
     console.log(`🔢 [POST] Extracted pricePerEgg: ${pricePerEgg}`);
+    console.log(`🔢 [POST] Extracted language: ${language}`);
 
     if (!breed || !stage || !quantityKg || !country || !userid) {
       console.error("Missing required fields:", { breed, stage, quantityKg, country, userid });
@@ -139,6 +142,7 @@ export async function POST(request: NextRequest) {
           numberOfBirds: parseFloat(numberOfBirds) || 0,
           salePricePerBird: parseFloat(salePricePerBird) || 0,
           pricePerEgg: parseFloat(pricePerEgg) || 0,
+          language: language || 'en-US', // <-- NEW: pass the language to formulateFeed
         };
         console.log("📤 [POST] Calling formulateFeed with params:", JSON.stringify(formulateParams, null, 2));
 

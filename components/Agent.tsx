@@ -63,7 +63,6 @@ const Agent = ({
   useEffect(() => {
     const sessionCountry = sessionData?.country;
     if (sessionCountry) {
-      // Always call setCountry to ensure it updates
       setCountry(sessionCountry);
       console.log(`🔄 [Agent] Forced setCountry to: ${sessionCountry}`);
     }
@@ -72,11 +71,9 @@ const Agent = ({
   // Fallback: if context currency symbol is still 'Ksh' but session country is Uganda,
   // we directly use the session country's currency symbol.
   const getDisplaySymbol = (): string => {
-    // If context currency is already not 'Ksh' (e.g., 'USh'), use it.
     if (currency.symbol && currency.symbol !== 'Ksh') {
       return currency.symbol;
     }
-    // Otherwise, try to derive from session country
     if (sessionData?.country) {
       const sessionCountry = sessionData.country.toLowerCase();
       const mapped = COUNTRY_CURRENCY_MAP[sessionCountry];
@@ -85,13 +82,12 @@ const Agent = ({
         return mapped.symbol;
       }
     }
-    return 'Ksh'; // ultimate fallback
+    return 'Ksh';
   };
 
   const getSpokenCurrencyName = (): string => {
     if (i18n.language === 'es') return 'Euros';
     const lang = i18n.language;
-    // Use the same fallback logic if needed
     const code = currency.code || (sessionData?.country ? COUNTRY_CURRENCY_MAP[sessionData.country.toLowerCase()]?.code : 'KES');
     switch (code) {
       case 'KES': return lang === 'fr' ? 'Shillings kényans' : lang === 'sw' ? 'Shilingi za Kenya' : 'Kenyan Shillings';
@@ -116,8 +112,6 @@ const Agent = ({
                      stage?.toLowerCase().includes('grower') ? 'grower' :
                      stage?.toLowerCase().includes('layer') ? 'layer' :
                      stage?.toLowerCase().includes('finisher') ? 'finisher' : 'starter';
-
-    console.log("🎯 [getNutritionalTargets] breedKey:", breedKey, "stageKey:", stageKey);
 
     if (breedKey === 'broiler') {
       if (stageKey === 'starter') {
@@ -187,7 +181,7 @@ const Agent = ({
   const ward = sessionData?.ward || '';
   const village = sessionData?.village || '';
 
-  // ===== TRANSFORM structuredList with currency replacement =====
+  // ===== TRANSFORM structuredList with currency replacement and localization =====
   const transformedStructuredList = useMemo(() => {
     if (!sessionData?.structuredList) return [];
 
@@ -206,7 +200,7 @@ const Agent = ({
           const cost = displaySymbol + ' ' + ing.cost.toFixed(0);
           bulletList += `• ${ing.name}: ${amount} kg (${cost})\n`;
         });
-        bulletList += `\nTotal Cost: ${displaySymbol} ${totalCost.toFixed(0)}`;
+        bulletList += `\n${safeT('total_cost_label', 'Total Cost')}: ${displaySymbol} ${totalCost.toFixed(0)}`;
 
         return {
           ...item,
@@ -236,33 +230,57 @@ const Agent = ({
         const allMet = isProteinMet && isCalciumMet && isEnergyMet;
 
         let bulletLines: string[] = [];
-        bulletLines.push(`- Protein: ${actualProtein.toFixed(2)}% (Target: ${targetProtein}%) ${isProteinMet ? '✅' : '❌'}`);
-        bulletLines.push(`- Calcium: ${actualCalcium.toFixed(2)}% (Target: ${targetCalcium}%) ${isCalciumMet ? '✅' : '❌'}`);
-        bulletLines.push(`- Energy: ${actualEnergy.toFixed(0)} kcal/kg (Target: ${targetEnergy} kcal/kg) ${isEnergyMet ? '✅' : '❌'}`);
+        bulletLines.push(safeT('nutrition_protein_line', {
+          actual: actualProtein.toFixed(2),
+          target: targetProtein,
+          status: isProteinMet ? '✅' : '❌'
+        }));
+        bulletLines.push(safeT('nutrition_calcium_line', {
+          actual: actualCalcium.toFixed(2),
+          target: targetCalcium,
+          status: isCalciumMet ? '✅' : '❌'
+        }));
+        bulletLines.push(safeT('nutrition_energy_line', {
+          actual: actualEnergy.toFixed(0),
+          target: targetEnergy,
+          status: isEnergyMet ? '✅' : '❌'
+        }));
 
         let adviceLines: string[] = [];
         if (!isProteinMet) {
           const diff = actualProtein - targetProtein;
           const absDiff = Math.abs(diff).toFixed(1);
           const direction = diff > 0 ? 'high' : 'low';
-          adviceLines.push(`  - Protein is ${absDiff}% too ${direction} - ${direction === 'high' ? 'Reduce protein sources (soya, fish, sunflower, cotton seed)' : 'Add more protein sources (soya bean meal or fish meal)'}`);
+          adviceLines.push(safeT('nutrition_protein_advice', {
+            absDiff,
+            direction: direction === 'high' ? safeT('high') : safeT('low'),
+            action: direction === 'high' ? safeT('nutrition_reduce_protein') : safeT('nutrition_add_protein')
+          }));
         }
         if (!isCalciumMet) {
           const diff = actualCalcium - targetCalcium;
           const absDiff = Math.abs(diff).toFixed(1);
           const direction = diff > 0 ? 'high' : 'low';
-          adviceLines.push(`  - Calcium is ${absDiff}% too ${direction} - ${direction === 'high' ? 'Reduce lime or dcp' : 'Increase lime or dcp'}`);
+          adviceLines.push(safeT('nutrition_calcium_advice', {
+            absDiff,
+            direction: direction === 'high' ? safeT('high') : safeT('low'),
+            action: direction === 'high' ? safeT('nutrition_reduce_calcium') : safeT('nutrition_add_calcium')
+          }));
         }
         if (!isEnergyMet) {
           const diff = actualEnergy - targetEnergy;
           const absDiff = Math.abs(diff).toFixed(0);
           const direction = diff > 0 ? 'high' : 'low';
-          adviceLines.push(`  - Energy is ${absDiff} kcal/kg too ${direction} - ${direction === 'high' ? 'Reduce high-energy ingredients (maize, oil)' : 'Add more maize or vegetable oil'}`);
+          adviceLines.push(safeT('nutrition_energy_advice', {
+            absDiff,
+            direction: direction === 'high' ? safeT('high') : safeT('low'),
+            action: direction === 'high' ? safeT('nutrition_reduce_energy') : safeT('nutrition_add_energy')
+          }));
         }
 
         let summaryLine = allMet
-          ? '✅ All nutritional targets met! This feed is properly balanced for your birds.'
-          : '⚠️ Some nutritional targets are not met. Please review the formula:';
+          ? safeT('nutrition_all_met', '✅ All nutritional targets met! This feed is properly balanced for your birds.')
+          : safeT('nutrition_some_not_met', '⚠️ Some nutritional targets are not met. Please review the formula:');
 
         let enhancedContent = bulletLines.join('\n');
         if (adviceLines.length > 0) {
@@ -287,7 +305,7 @@ const Agent = ({
       }
       return item;
     });
-  }, [sessionData, getDisplaySymbol]);
+  }, [sessionData, getDisplaySymbol, safeT]);
 
   const transformedFinancialAdvice = useMemo(() => {
     if (!sessionData?.structuredFinancialAdvice) return null;
@@ -1007,7 +1025,7 @@ const Agent = ({
                   : 'bg-gradient-to-r from-gray-500 to-gray-600 text-white'
               }`}
             >
-              {voiceEnabled ? <><Mic className="w-4 h-4" /><span>Voice ON</span></> : <><MicOff className="w-4 h-4" /><span>Voice OFF</span></>}
+              {voiceEnabled ? <><Mic className="w-4 h-4" /><span>{safeT('voice_on', 'Voice ON')}</span></> : <><MicOff className="w-4 h-4" /><span>{safeT('voice_off', 'Voice OFF')}</span></>}
             </button>
             <button onClick={startVoiceInterview} disabled={isStartButtonDisabled} className={`px-4 py-2 rounded-xl font-medium text-sm whitespace-nowrap ${!isStartButtonDisabled ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
               <span className="flex items-center gap-2">

@@ -392,7 +392,7 @@ const CreateInterviewAgent = ({
         id: "numberOfBirds",
         questionKey: "question_number_of_birds",
         type: "text",
-        placeholder: "e.g., 100",
+        placeholder: safeT('number_of_birds_placeholder', { default: "e.g., 100" }),
         sectionKey: "section_birds",
       },
       // Conditional: salePricePerBird for Layer OR Broiler
@@ -401,7 +401,7 @@ const CreateInterviewAgent = ({
           id: "salePricePerBird",
           questionKey: "question_sale_price_per_bird",
           type: "text",
-          placeholder: "e.g., 1200",
+          placeholder: safeT('sale_price_per_bird_placeholder', { default: "e.g., 1200" }),
           sectionKey: "section_financial"
         }
       ] : []),
@@ -411,7 +411,7 @@ const CreateInterviewAgent = ({
           id: "pricePerEgg",
           questionKey: "question_price_per_egg",
           type: "text",
-          placeholder: "e.g., 20",
+          placeholder: safeT('price_per_egg_placeholder', { default: "e.g., 20" }),
           sectionKey: "section_financial"
         }
       ] : []),
@@ -419,34 +419,34 @@ const CreateInterviewAgent = ({
         id: "county",
         questionKey: "question_county",
         type: "text",
-        placeholder: "e.g., Bungoma",
+        placeholder: safeT('county_placeholder', { default: "e.g., Bungoma" }),
         sectionKey: "section_location"
       },
       {
         id: "subCounty",
         questionKey: "question_sub_county",
         type: "text",
-        placeholder: "e.g., Kimilili",
+        placeholder: safeT('sub_county_placeholder', { default: "e.g., Kimilili" }),
         sectionKey: "section_location"
       },
       {
         id: "ward",
         questionKey: "question_ward",
         type: "text",
-        placeholder: "e.g., Kimilili",
+        placeholder: safeT('ward_placeholder', { default: "e.g., Kimilili" }),
         sectionKey: "section_location"
       },
       {
         id: "village",
         questionKey: "question_village",
         type: "text",
-        placeholder: "e.g., Sikulu",
+        placeholder: safeT('village_placeholder', { default: "e.g., Sikulu" }),
         sectionKey: "section_location"
       }
     ];
 
     return baseQuestions;
-  }, [farmerDetails.breed, farmerDetails.stage]);
+  }, [farmerDetails.breed, farmerDetails.stage, safeT]);
 
   const filterQuestions = useCallback((questions: any[]) => {
     return questions.filter(q => {
@@ -473,14 +473,6 @@ const CreateInterviewAgent = ({
   useEffect(() => {
     setDebugInfo(prev => ({ ...prev, totalQuestions }));
   }, [totalQuestions]);
-
-  // ===== FORCE CLEAR userTranscript ON TEXT QUESTIONS =====
-  useEffect(() => {
-    const currentQ = allQuestions[configStep];
-    if (currentQ && currentQ.type === "text") {
-      setUserTranscript("");
-    }
-  }, [configStep, allQuestions]);
 
   // ========== SPEECH RECOGNITION ==========
   useEffect(() => {
@@ -643,7 +635,6 @@ const CreateInterviewAgent = ({
 
   // ================================================================
   // ========== FIXED: PROMISE-BASED VOICE WITH DYNAMIC KARAOKE ==========
-  // ========== NOW WRAPPED WITH useCallback TO REACT TO CURRENCY CHANGES ==========
   // ================================================================
   const streamQuestionWithVoice = useCallback((fullText: string): Promise<void> => {
     return new Promise((resolve) => {
@@ -736,8 +727,6 @@ const CreateInterviewAgent = ({
             clearTimeout(wordTimerRef.current);
             wordTimerRef.current = null;
           }
-          // If all words are shown but speech hasn't ended, we still wait for onend
-          // But if all words are shown and speech is done, finish will be called by onend
           return;
         }
 
@@ -771,18 +760,19 @@ const CreateInterviewAgent = ({
       }
 
       // ---- SPEECH SYNTHESIS EVENTS ----
+      // Dynamic safety timeout based on text length (100ms per char + 5s buffer)
+      const estimatedDuration = Math.max(5000, fullText.length * 100);
       let safetyTimeout: NodeJS.Timeout | null = setTimeout(() => {
         if (!isFinished) {
           console.warn("⚠️ Speech took too long – forcing finish");
+          window.speechSynthesis.cancel(); // Stop speech to avoid lingering
           finish();
         }
-      }, 30000); // 30s safety
+      }, estimatedDuration + 5000);
 
       utterance.onend = () => {
         if (safetyTimeout) clearTimeout(safetyTimeout);
-        // Ensure all words are shown
         if (!isFinished) {
-          // If timer hasn't finished, clear it and show full text
           if (wordTimerRef.current) {
             clearTimeout(wordTimerRef.current);
             wordTimerRef.current = null;
@@ -798,21 +788,17 @@ const CreateInterviewAgent = ({
           setIsSpeaking(false);
           resolve();
           isFinished = true;
-        } else {
-          // Already finished by timer? Just resolve again if not resolved
-          if (!speechEnded) {
-            setIsStreaming(false);
-            setIsSpeaking(false);
-            resolve();
-            speechEnded = true;
-          }
+        } else if (!speechEnded) {
+          setIsStreaming(false);
+          setIsSpeaking(false);
+          resolve();
+          speechEnded = true;
         }
       };
 
       utterance.onerror = (event) => {
         if (safetyTimeout) clearTimeout(safetyTimeout);
         console.error("Speech error:", event);
-        // Fallback: show full text and resolve
         if (!isFinished) {
           if (wordTimerRef.current) {
             clearTimeout(wordTimerRef.current);
@@ -884,7 +870,6 @@ const CreateInterviewAgent = ({
       acknowledgment = safeT('ack_generic', { answer: spokenAnswer });
     }
 
-    // Await the speech completion
     if (voiceAssistantRef.current) {
       await voiceAssistantRef.current.speak(acknowledgment);
     }
@@ -899,7 +884,7 @@ const CreateInterviewAgent = ({
     let cleanAnswer = answer.trim();
 
     if (!cleanAnswer) {
-      const msg = "Please provide an answer.";
+      const msg = safeT('please_provide_answer');
       toast.warning(msg);
       if (voiceAssistantRef.current) {
         await voiceAssistantRef.current.speak(msg);
@@ -911,7 +896,7 @@ const CreateInterviewAgent = ({
     if (numericFields.includes(currentConfig.id)) {
       const num = parseFloat(cleanAnswer);
       if (isNaN(num) || num <= 0) {
-        const msg = "Please enter a valid number (e.g., 100).";
+        const msg = safeT('enter_valid_number');
         toast.warning(msg);
         if (voiceAssistantRef.current) {
           await voiceAssistantRef.current.speak(msg);
@@ -1077,7 +1062,8 @@ const CreateInterviewAgent = ({
 
     const q = allQuestions[step];
     const locationFields = ["county", "subCounty", "ward", "village"];
-    if (q.type !== "multiselect" && q.type !== "prices" && !locationFields.includes(q.id)) {
+    // 🔥 FIX: Do NOT start voice recognition for text questions
+    if (q.type !== "multiselect" && q.type !== "prices" && q.type !== "text" && !locationFields.includes(q.id)) {
       safeStartListening();
     }
   };
@@ -1104,11 +1090,10 @@ const CreateInterviewAgent = ({
       numberOfBirds: parseInt(farmerDetails.numberOfBirds) || 0,
       salePricePerBird: parseFloat(farmerDetails.salePricePerBird) || 0,
       pricePerEgg: parseFloat(farmerDetails.pricePerEgg) || 0,
+      language: i18n.language,
     };
 
     console.log("📤 [generateSession] Sending request body:", JSON.stringify(requestBody, null, 2));
-    console.log("🔢 [generateSession] numberOfBirds from farmerDetails:", farmerDetails.numberOfBirds);
-    console.log("🔢 [generateSession] numberOfBirds parsed:", requestBody.numberOfBirds);
 
     try {
       const response = await fetch("/api/vapi/generate", {
@@ -1126,7 +1111,6 @@ const CreateInterviewAgent = ({
 
       if (data.success && data.sessionId) {
         console.log(`✅ [generateSession] Session created: ${data.sessionId}`);
-        console.log("📊 [generateSession] structuredList keys:", data.structuredList?.map((item: any) => item.key) || []);
         await voiceAssistantRef.current.speak(safeT('ready_redirect'));
         setTimeout(() => window.location.href = `/interview/${data.sessionId}`, 2000);
         setCurrentStep("redirecting");
@@ -1159,8 +1143,6 @@ const CreateInterviewAgent = ({
     setStreamingQuestion("");
     setIsStreaming(false);
     setUserTranscript("");
-    // Resolve any pending speech promise (if any) by calling resolve?
-    // The promise will be resolved by the cleanup, but we can also force.
   };
 
   const submitAnswer = () => {
@@ -1223,7 +1205,7 @@ const CreateInterviewAgent = ({
     if (q.type === "prices") {
       const ingredients = farmerDetails.availableIngredients;
       if (ingredients.length === 0) {
-        return <p className="text-gray-500">No ingredients selected.</p>;
+        return <p className="text-gray-500">{safeT('no_ingredients_selected')}</p>;
       }
       return (
         <div className="space-y-3 max-h-60 overflow-y-auto p-2">
@@ -1234,7 +1216,7 @@ const CreateInterviewAgent = ({
                 type="number"
                 step="any"
                 min="0"
-                placeholder={`Price per kg (${currency.symbol})`}
+                placeholder={safeT('price_per_kg_placeholder', { symbol: currency.symbol })}
                 value={farmerDetails.ingredientPrices[ingredient] || ''}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
@@ -1276,9 +1258,14 @@ const CreateInterviewAgent = ({
     if (q.type === "text") {
       return (
         <input
+          key={`text-input-${configStep}`}  // Forces a new DOM element on each question
+          autoFocus
           type="text"
           value={userTranscript}
-          onChange={(e) => setUserTranscript(e.target.value)}
+          onChange={(e) => {
+            console.log("✏️ Input onChange fired, new value:", e.target.value);
+            setUserTranscript(e.target.value);
+          }}
           placeholder={q.placeholder || safeT('type_answer')}
           autoComplete="off"
           autoCorrect="off"
@@ -1340,7 +1327,7 @@ const CreateInterviewAgent = ({
               <CurrencySwitcher />
             </div>
 
-            {/* Voice Toggle - Updated with disabled state and "Generating... Please Wait" */}
+            {/* Voice Toggle */}
             <div className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl px-3 py-2 border border-white-30">
               <Mic className={`w-5 h-5 text-white ${isSpeaking ? 'animate-pulse' : ''}`} />
               <button
@@ -1353,12 +1340,12 @@ const CreateInterviewAgent = ({
                 }`}
               >
                 {currentStep === "generating" || currentStep === "redirecting"
-                  ? "Generating... Please Wait"
+                  ? safeT('generating_please_wait')
                   : (voiceEnabled ? safeT('voice_on') : safeT('voice_off'))}
               </button>
             </div>
 
-            {/* Start Setup Button - Updated with "Generating... Please Wait" */}
+            {/* Start Setup Button */}
             <button
               onClick={startVoiceSetup}
               disabled={!voiceEnabled || currentStep !== "idle"}
@@ -1369,7 +1356,7 @@ const CreateInterviewAgent = ({
               }`}
             >
               {currentStep === "generating" || currentStep === "redirecting"
-                ? "Generating... Please Wait"
+                ? safeT('generating_please_wait')
                 : (currentStep === "idle" ? safeT('start_setup') : safeT('loading'))}
             </button>
           </div>
