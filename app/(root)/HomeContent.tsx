@@ -37,7 +37,7 @@ export default function HomeContent({
     useRef(false);
 
   const guidanceMessage =
-    'Press the Start Session button to start your poultry feed formulation.';
+    'Press the Start Session button to start your business development services bootcamp.';
 
   // Stop the Start Session voice guidance immediately.
   const stopStartSessionGuidance = () => {
