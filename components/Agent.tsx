@@ -1,10 +1,11 @@
+// components/Agent.tsx
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
-import { useOfflineTranslation } from '@/lib/hooks/useOfflineTranslation';
+import { useOfflineTranslation } from "@/lib/hooks/useOfflineTranslation";
 import VoiceService from "@/lib/voice/VoiceService";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -16,21 +17,13 @@ import {
   Loader2,
   ArrowLeft,
   MessageCircle,
-  Beaker,
-  AlertCircle,
   Rocket,
-  Scale,
-  Package,
-  DollarSign,
-  MapPin,
-  Shield,
-  CheckCircle,
-  List,
-  ClipboardList,
-  Calendar,
+  BookOpen,
+  GraduationCap,
+  CheckCircle2,
 } from "lucide-react";
-import { useCurrency } from '@/lib/context/CurrencyContext';
-import { COUNTRY_CURRENCY_MAP } from "@/lib/config/currency";
+
+const LINE_BREAK = "␊";
 
 interface AgentProps {
   userName: string;
@@ -39,128 +32,50 @@ interface AgentProps {
   sessionData?: any;
 }
 
-interface StructuredItem {
-  key: string;
-  params?: Record<string, any>;
+interface LessonSection {
+  id?: string;
+  title: string;
+  type: "text" | "example" | "quiz";
+  content?: string;
+  question?: string;
+  options?: string[];
+  correctIndex?: number;
 }
 
-const Agent = ({
-  userName,
-  userId,
-  interviewId,
-  sessionData
-}: AgentProps) => {
+const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   const { t, ready, i18n } = useOfflineTranslation();
-  const { currency, setCountry, country } = useCurrency();
 
-  // Debug logging
-  console.log("🔍 [Agent] Mounted with sessionData:", sessionData);
-  console.log("🔍 [Agent] Context country:", country);
-  console.log("🔍 [Agent] Context currency:", currency);
-  console.log("🔍 [Agent] sessionData.country:", sessionData?.country);
-
-  // Force sync country from session data
-  useEffect(() => {
-    const sessionCountry = sessionData?.country;
-    if (sessionCountry) {
-      setCountry(sessionCountry);
-      console.log(`🔄 [Agent] Forced setCountry to: ${sessionCountry}`);
-    }
-  }, [sessionData?.country, setCountry]);
-
-  // Fallback: if context currency symbol is still 'Ksh' but session country is Uganda,
-  // we directly use the session country's currency symbol.
-  const getDisplaySymbol = (): string => {
-    if (currency.symbol && currency.symbol !== 'Ksh') {
-      return currency.symbol;
-    }
-    if (sessionData?.country) {
-      const sessionCountry = sessionData.country.toLowerCase();
-      const mapped = COUNTRY_CURRENCY_MAP[sessionCountry];
-      if (mapped && mapped.symbol) {
-        console.log(`🔄 [Agent] Fallback: using symbol ${mapped.symbol} for country ${sessionCountry}`);
-        return mapped.symbol;
-      }
-    }
-    return 'Ksh';
-  };
-
-  const getSpokenCurrencyName = (): string => {
-    if (i18n.language === 'es') return 'Euros';
-    const lang = i18n.language;
-    const code = currency.code || (sessionData?.country ? COUNTRY_CURRENCY_MAP[sessionData.country.toLowerCase()]?.code : 'KES');
-    switch (code) {
-      case 'KES': return lang === 'fr' ? 'Shillings kényans' : lang === 'sw' ? 'Shilingi za Kenya' : 'Kenyan Shillings';
-      case 'UGX': return lang === 'fr' ? 'Shillings ougandais' : lang === 'sw' ? 'Shilingi za Uganda' : 'Ugandan Shillings';
-      case 'TZS': return lang === 'fr' ? 'Shillings tanzaniens' : lang === 'sw' ? 'Shilingi za Tanzania' : 'Tanzanian Shillings';
-      default: return currency.name || 'Kenyan Shillings';
-    }
-  };
-
-  useEffect(() => {
-    const sessionLang = sessionData?.language;
-    if (sessionLang && sessionLang !== i18n.language) {
-      i18n.changeLanguage(sessionLang);
-      localStorage.setItem('preferred-language', sessionLang);
-    }
-  }, [sessionData, i18n]);
-
-  // ===== GET CORRECT NUTRITIONAL TARGETS BASED ON BREED AND STAGE =====
-  const getNutritionalTargets = (breed: string, stage: string): { protein: number; calcium: number; energy: number } => {
-    const breedKey = breed?.toLowerCase().trim() || '';
-    const stageKey = stage?.toLowerCase().includes('starter') ? 'starter' :
-                     stage?.toLowerCase().includes('grower') ? 'grower' :
-                     stage?.toLowerCase().includes('layer') ? 'layer' :
-                     stage?.toLowerCase().includes('finisher') ? 'finisher' : 'starter';
-
-    if (breedKey === 'broiler') {
-      if (stageKey === 'starter') {
-        return { protein: 22.0, calcium: 0.9, energy: 2900 };
-      } else if (stageKey === 'finisher') {
-        return { protein: 20.0, calcium: 0.8, energy: 2950 };
-      } else {
-        return { protein: 20.0, calcium: 0.8, energy: 2950 };
-      }
-    }
-
-    if (stageKey === 'starter') {
-      return { protein: 20.15, calcium: 1.0, energy: 2800 };
-    } else if (stageKey === 'grower') {
-      return { protein: 16.7, calcium: 0.9, energy: 2700 };
-    } else if (stageKey === 'layer') {
-      return { protein: 17.04, calcium: 3.8, energy: 2750 };
-    } else {
-      return { protein: 16.7, calcium: 0.9, energy: 2700 };
-    }
-  };
-
+  // ===== SAFE TRANSLATION (same pattern as working app) =====
   const safeT = (key: string, params?: any): string => {
     try {
-      if (key && (key.includes(' ') || key.includes('\n') || key.includes('.'))) return key;
+      if (key && (key.includes(" ") || key.includes("\n") || key.includes("."))) return key;
       const template = i18n.t(key);
       if (!params) return template;
       let result = template;
       for (const [paramKey, paramValue] of Object.entries(params)) {
-        result = result.replace(new RegExp(`{{${paramKey}}}`, 'g'), String(paramValue));
+        result = result.replace(new RegExp(`{{${paramKey}}}`, "g"), String(paramValue));
       }
       return result;
-    } catch { return key; }
+    } catch {
+      return key;
+    }
   };
 
+  // ===== STATE (mirrors working app) =====
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [voiceInitializing, setVoiceInitializing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [welcomeSpoken, setWelcomeSpoken] = useState(false);
-  const [recommendationsSpoken, setRecommendationsSpoken] = useState(false);
-  const [structuredList, setStructuredList] = useState<any[]>([]);
-  const [structuredFinancialAdvice, setStructuredFinancialAdvice] = useState<any>(null);
+  const [sectionsSpoken, setSectionsSpoken] = useState(false);
+  const [sections, setSections] = useState<LessonSection[]>([]);
   const [voicesLoaded, setVoicesLoaded] = useState(false);
-  const [readRecommendations, setReadRecommendations] = useState<Set<number>>(new Set());
-  const [recommendationStreams, setRecommendationStreams] = useState<{[key: number]: string}>({});
-  const [activeStreamingRec, setActiveStreamingRec] = useState<number | null>(null);
+  const [readSections, setReadSections] = useState<Set<number>>(new Set());
+  const [sectionStreams, setSectionStreams] = useState<{ [key: number]: string }>({});
+  const [activeStreamingSection, setActiveStreamingSection] = useState<number | null>(null);
 
-  const [farmerComment, setFarmerComment] = useState<string>("");
+  // Farmers comments
+  const [learnerComment, setLearnerComment] = useState<string>("");
   const [isCommentSubmitting, setIsCommentSubmitting] = useState<boolean>(false);
   const [commentSubmitted, setCommentSubmitted] = useState<boolean>(false);
 
@@ -169,302 +84,121 @@ const Agent = ({
   const mountedRef = useRef(true);
   const voiceServiceInitializedRef = useRef(false);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const abortAnimationRef = useRef<number | null>(null);
 
-  const farmerName = sessionData?.farmerName || userName || "Farmer";
-  const farmerCountry = sessionData?.country || 'kenya';
-  const breed = sessionData?.breed || '';
-  const stage = sessionData?.stage || '';
-  const quantityKg = sessionData?.quantityKg || 0;
-  const county = sessionData?.county || '';
-  const subCounty = sessionData?.subCounty || '';
-  const ward = sessionData?.ward || '';
-  const village = sessionData?.village || '';
+  const learnerName =
+    sessionData?.learnerName || sessionData?.farmerName || userName || "Learner";
+  const learnerCountry = sessionData?.country || "kenya";
+  const topicLabel = sessionData?.topicLabel || "Lesson";
+  const moduleName = sessionData?.module || "";
+  const county = sessionData?.county || "";
+  const country = sessionData?.country || "";
 
-  // ===== TRANSFORM structuredList with currency replacement and localization =====
-  const transformedStructuredList = useMemo(() => {
-    if (!sessionData?.structuredList) return [];
-
-    const breed = sessionData?.breed || '';
-    const stage = sessionData?.stage || '';
-    const displaySymbol = getDisplaySymbol();
-
-    return sessionData.structuredList.map((item: any) => {
-      if (item.key === 'ingredient_table') {
-        const ingredients = sessionData?.feedResult?.ingredients || [];
-        const totalCost = sessionData?.feedResult?.totalCost || 0;
-
-        let bulletList = '';
-        ingredients.forEach((ing: any) => {
-          const amount = ing.amountKg.toFixed(2);
-          const cost = displaySymbol + ' ' + ing.cost.toFixed(0);
-          bulletList += `• ${ing.name}: ${amount} kg (${cost})\n`;
-        });
-        bulletList += `\n${safeT('total_cost_label', 'Total Cost')}: ${displaySymbol} ${totalCost.toFixed(0)}`;
-
-        return {
-          ...item,
-          params: { content: bulletList }
-        };
-      }
-
-      if (item.key === 'nutritional_info') {
-        const nutritionData = sessionData?.feedResult?.nutritionalSummary;
-        let actualProtein = nutritionData?.protein || 0;
-        let actualCalcium = nutritionData?.calcium || 0;
-        let actualEnergy = nutritionData?.energy || 0;
-
-        const targets = getNutritionalTargets(breed, stage);
-        let targetProtein = targets.protein;
-        let targetCalcium = targets.calcium;
-        let targetEnergy = targets.energy;
-
-        if (nutritionData?.targetProtein) targetProtein = nutritionData.targetProtein;
-        if (nutritionData?.targetCalcium) targetCalcium = nutritionData.targetCalcium;
-        if (nutritionData?.targetEnergy) targetEnergy = nutritionData.targetEnergy;
-
-        const tolerance = 0.05;
-        const isProteinMet = targetProtein > 0 ? Math.abs(actualProtein - targetProtein) / targetProtein < tolerance : false;
-        const isCalciumMet = targetCalcium > 0 ? Math.abs(actualCalcium - targetCalcium) / targetCalcium < tolerance : false;
-        const isEnergyMet = targetEnergy > 0 ? Math.abs(actualEnergy - targetEnergy) / targetEnergy < tolerance : false;
-        const allMet = isProteinMet && isCalciumMet && isEnergyMet;
-
-        let bulletLines: string[] = [];
-        bulletLines.push(safeT('nutrition_protein_line', {
-          actual: actualProtein.toFixed(2),
-          target: targetProtein,
-          status: isProteinMet ? '✅' : '❌'
-        }));
-        bulletLines.push(safeT('nutrition_calcium_line', {
-          actual: actualCalcium.toFixed(2),
-          target: targetCalcium,
-          status: isCalciumMet ? '✅' : '❌'
-        }));
-        bulletLines.push(safeT('nutrition_energy_line', {
-          actual: actualEnergy.toFixed(0),
-          target: targetEnergy,
-          status: isEnergyMet ? '✅' : '❌'
-        }));
-
-        let adviceLines: string[] = [];
-        if (!isProteinMet) {
-          const diff = actualProtein - targetProtein;
-          const absDiff = Math.abs(diff).toFixed(1);
-          const direction = diff > 0 ? 'high' : 'low';
-          adviceLines.push(safeT('nutrition_protein_advice', {
-            absDiff,
-            direction: direction === 'high' ? safeT('high') : safeT('low'),
-            action: direction === 'high' ? safeT('nutrition_reduce_protein') : safeT('nutrition_add_protein')
-          }));
-        }
-        if (!isCalciumMet) {
-          const diff = actualCalcium - targetCalcium;
-          const absDiff = Math.abs(diff).toFixed(1);
-          const direction = diff > 0 ? 'high' : 'low';
-          adviceLines.push(safeT('nutrition_calcium_advice', {
-            absDiff,
-            direction: direction === 'high' ? safeT('high') : safeT('low'),
-            action: direction === 'high' ? safeT('nutrition_reduce_calcium') : safeT('nutrition_add_calcium')
-          }));
-        }
-        if (!isEnergyMet) {
-          const diff = actualEnergy - targetEnergy;
-          const absDiff = Math.abs(diff).toFixed(0);
-          const direction = diff > 0 ? 'high' : 'low';
-          adviceLines.push(safeT('nutrition_energy_advice', {
-            absDiff,
-            direction: direction === 'high' ? safeT('high') : safeT('low'),
-            action: direction === 'high' ? safeT('nutrition_reduce_energy') : safeT('nutrition_add_energy')
-          }));
-        }
-
-        let summaryLine = allMet
-          ? safeT('nutrition_all_met', '✅ All nutritional targets met! This feed is properly balanced for your birds.')
-          : safeT('nutrition_some_not_met', '⚠️ Some nutritional targets are not met. Please review the formula:');
-
-        let enhancedContent = bulletLines.join('\n');
-        if (adviceLines.length > 0) {
-          enhancedContent += '\n\n' + summaryLine + '\n' + adviceLines.join('\n');
-        } else {
-          enhancedContent += '\n\n' + summaryLine;
-        }
-
-        return {
-          ...item,
-          params: { content: enhancedContent }
-        };
-      }
-
-      return item;
-    }).map((item: any) => {
-      if (item.params?.content && typeof item.params.content === 'string') {
-        let content = item.params.content;
-        content = content.replace(/\{\{CURRENCY\}\}/g, getDisplaySymbol());
-        content = content.replace(/Ksh/g, getDisplaySymbol());
-        return { ...item, params: { ...item.params, content } };
-      }
-      return item;
-    });
-  }, [sessionData, getDisplaySymbol, safeT]);
-
-  const transformedFinancialAdvice = useMemo(() => {
-    if (!sessionData?.structuredFinancialAdvice) return null;
-    const advice = sessionData.structuredFinancialAdvice;
-    if (advice.params?.content && typeof advice.params.content === 'string') {
-      let content = advice.params.content;
-      content = content.replace(/\{\{CURRENCY\}\}/g, getDisplaySymbol());
-      content = content.replace(/Ksh/g, getDisplaySymbol());
-      return { ...advice, params: { ...advice.params, content } };
-    }
-    return advice;
-  }, [sessionData, getDisplaySymbol]);
-
+  // ===== LOAD SECTIONS =====
   useEffect(() => {
-    setStructuredList(transformedStructuredList);
-  }, [transformedStructuredList]);
-
-  useEffect(() => {
-    if (transformedFinancialAdvice) {
-      setStructuredFinancialAdvice(transformedFinancialAdvice);
+    const raw = sessionData?.lessonSections || sessionData?.structuredList || [];
+    if (Array.isArray(raw) && raw.length > 0) {
+      console.log(`✅ [Agent] Loaded ${raw.length} lesson sections`);
+      setSections(raw);
     }
-  }, [transformedFinancialAdvice]);
+  }, [sessionData]);
 
-  // Submit Farmers Comment
-  const submitFarmerComment = async () => {
-    if (!farmerComment.trim() || !sessionData) return;
-    setIsCommentSubmitting(true);
-    setCommentSubmitted(false);
-
-    try {
-      const res = await fetch('/api/farmer/farmerscomments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          comment: farmerComment,
-          farmerName: sessionData.farmerName || userName || "Farmer",
-          userId: userId,
-          sessionId: sessionData.id || interviewId,
-          crop: sessionData.breed || 'poultry',
-          country: sessionData.country || 'kenya'
-        })
-      });
-
-      if (res.ok) {
-        setCommentSubmitted(true);
-        setFarmerComment('');
-        const successMessage = safeT('feedback_saved', 'your comments have been received successfully!');
-        await speakWithVoice(successMessage);
-        setCommentSubmitted(false);
-      } else {
-        const failedMessage = safeT('feedback_failed', 'your comment not received. Please try again later.');
-        await speakWithVoice(failedMessage);
-        setCommentSubmitted(false);
-      }
-    } catch (error: any) {
-      console.error("Error submitting farmer comment:", error);
-      const failedMessage = safeT('feedback_failed', 'your comment not received. Please try again later.');
-      await speakWithVoice(failedMessage);
-      setCommentSubmitted(false);
-    } finally {
-      setIsCommentSubmitting(false);
-    }
-  };
-
-  // Voice setup (unchanged)
+  // ===== RECOGNITION LANGUAGE (from working app) =====
   const recognitionLanguage = (() => {
-    const lang = i18n.language || 'en';
-    if (lang === 'en-GB') return 'en-GB';
-    if (lang === 'en') return 'en-US';
-    if (lang === 'fr') return 'fr-FR';
-    if (lang === 'sw') return 'sw-KE';
-    if (lang === 'es') return 'es-ES';
-    return 'en-US';
+    const lang = i18n.language || "en";
+    if (lang === "en-GB") return "en-GB";
+    if (lang === "en") return "en-US";
+    if (lang === "fr") return "fr-FR";
+    if (lang === "sw") return "sw-KE";
+    if (lang === "es") return "es-ES";
+    return "en-US";
   })();
 
+  // ===== GET BEST VOICE (identical to working app) =====
   const getBestVoice = () => {
     const voices = window.speechSynthesis.getVoices();
-    // ... (all the voice selection logic – unchanged)
+
     const findBritishEnglishFemale = (): SpeechSynthesisVoice | null => {
-      const femaleNames = ['libby', 'hazel', 'susan', 'maisie', 'sonia', 'kate', 'victoria', 'millie', 'olivia', 'google uk english female', 'microsoft libby', 'microsoft hazel', 'microsoft susan', 'microsoft maisie', 'microsoft sonia', 'british english female', 'uk english female'];
+      const femaleNames = ["libby", "hazel", "susan", "maisie", "sonia", "kate", "victoria", "millie", "olivia", "google uk english female", "microsoft libby", "microsoft hazel", "microsoft susan", "microsoft maisie", "microsoft sonia", "british english female", "uk english female"];
       for (const name of femaleNames) {
-        const voice = voices.find(v => v.lang === 'en-GB' && v.name.toLowerCase().includes(name));
+        const voice = voices.find((v) => v.lang === "en-GB" && v.name.toLowerCase().includes(name));
         if (voice) return voice;
       }
-      const maleIndicators = ['george', 'ryan', 'thomas', 'david', 'mark', 'james', 'john', 'paul', 'michael'];
-      const anyBritishFemale = voices.find(v => v.lang === 'en-GB' && !maleIndicators.some(m => v.name.toLowerCase().includes(m)));
+      const maleIndicators = ["george", "ryan", "thomas", "david", "mark", "james", "john", "paul", "michael"];
+      const anyBritishFemale = voices.find((v) => v.lang === "en-GB" && !maleIndicators.some((m) => v.name.toLowerCase().includes(m)));
       if (anyBritishFemale) return anyBritishFemale;
-      return voices.find(v => v.lang === 'en-GB') || null;
+      return voices.find((v) => v.lang === "en-GB") || null;
     };
 
     const findAmericanEnglishFemale = (): SpeechSynthesisVoice | null => {
-      const femaleNames = ['samantha', 'victoria', 'zira', 'jenny', 'aria', 'google us english female', 'microsoft jenny', 'microsoft zira', 'microsoft aria', 'us english female'];
+      const femaleNames = ["samantha", "victoria", "zira", "jenny", "aria", "google us english female", "microsoft jenny", "microsoft zira", "microsoft aria", "us english female"];
       for (const name of femaleNames) {
-        const voice = voices.find(v => v.lang === 'en-US' && v.name.toLowerCase().includes(name));
+        const voice = voices.find((v) => v.lang === "en-US" && v.name.toLowerCase().includes(name));
         if (voice) return voice;
       }
-      const maleIndicators = ['david', 'mark', 'james', 'john', 'paul', 'michael', 'alex', 'thomas'];
-      const anyFemale = voices.find(v => v.lang === 'en-US' && !maleIndicators.some(m => v.name.toLowerCase().includes(m)));
+      const maleIndicators = ["david", "mark", "james", "john", "paul", "michael", "alex", "thomas"];
+      const anyFemale = voices.find((v) => v.lang === "en-US" && !maleIndicators.some((m) => v.name.toLowerCase().includes(m)));
       if (anyFemale) return anyFemale;
-      return voices.find(v => v.lang === 'en-US') || null;
+      return voices.find((v) => v.lang === "en-US") || null;
     };
 
     const findFrenchVoice = (): SpeechSynthesisVoice | null => {
-      let vivienne = voices.find(v => v.lang.startsWith('fr') && v.name.toLowerCase().includes('vivienne'));
+      const vivienne = voices.find((v) => v.lang.startsWith("fr") && v.name.toLowerCase().includes("vivienne"));
       if (vivienne) return vivienne;
-      const frenchFemale = voices.find(v => v.lang.startsWith('fr') && (v.name.toLowerCase().includes('denise') || v.name.toLowerCase().includes('google français female') || v.name.toLowerCase().includes('marie') || v.name.toLowerCase().includes('chloe')));
+      const frenchFemale = voices.find((v) => v.lang.startsWith("fr") && (v.name.toLowerCase().includes("denise") || v.name.toLowerCase().includes("google français female") || v.name.toLowerCase().includes("marie") || v.name.toLowerCase().includes("chloe")));
       if (frenchFemale) return frenchFemale;
-      return voices.find(v => v.lang.startsWith('fr')) || null;
+      return voices.find((v) => v.lang.startsWith("fr")) || null;
     };
 
     const findSpanishVoice = (): SpeechSynthesisVoice | null => {
-      const femaleNames = ['elena', 'ximena', 'maria', 'paloma', 'sofia', 'catalina', 'salome', 'belkys', 'ramona', 'andrea', 'lorena', 'teresa', 'marta', 'karla', 'dalia', 'yolanda', 'margarita', 'tania', 'camila', 'karina', 'elvira', 'valentina', 'paola', 'michelle', 'gabriela', 'lucia', 'laura', 'fernanda', 'victoria', 'monica', 'paulina', 'sabina', 'helena', 'florencia'];
+      const femaleNames = ["elena", "ximena", "maria", "paloma", "sofia", "catalina", "salome", "belkys", "ramona", "andrea", "lorena", "teresa", "marta", "karla", "dalia", "yolanda", "margarita", "tania", "camila", "karina", "elvira", "valentina", "paola", "michelle", "gabriela", "lucia", "laura", "fernanda", "victoria", "monica", "paulina", "sabina", "helena", "florencia"];
       for (const name of femaleNames) {
-        const voice = voices.find(v => v.lang.startsWith('es') && v.name.toLowerCase().includes(name));
+        const voice = voices.find((v) => v.lang.startsWith("es") && v.name.toLowerCase().includes(name));
         if (voice) return voice;
       }
-      const nonMale = voices.find(v => v.lang.startsWith('es') && !v.name.toLowerCase().includes('alvaro') && !v.name.toLowerCase().includes('jorge') && !v.name.toLowerCase().includes('manuel') && !v.name.toLowerCase().includes('andres') && !v.name.toLowerCase().includes('carlos') && !v.name.toLowerCase().includes('juan') && !v.name.toLowerCase().includes('luis') && !v.name.toLowerCase().includes('rodrigo') && !v.name.toLowerCase().includes('javier'));
+      const nonMale = voices.find((v) => v.lang.startsWith("es") && !v.name.toLowerCase().includes("alvaro") && !v.name.toLowerCase().includes("jorge") && !v.name.toLowerCase().includes("manuel") && !v.name.toLowerCase().includes("andres") && !v.name.toLowerCase().includes("carlos") && !v.name.toLowerCase().includes("juan") && !v.name.toLowerCase().includes("luis") && !v.name.toLowerCase().includes("rodrigo") && !v.name.toLowerCase().includes("javier"));
       if (nonMale) return nonMale;
       return null;
     };
 
     const findSwahiliVoice = (): SpeechSynthesisVoice | null => {
-      let swahiliVoices = voices.filter(v => v.lang === 'sw-KE' && (v.name.includes('Rafiki') || v.name.includes('Zuri') || v.name.includes('Aisha') || v.name.includes('Kenya')));
+      let swahiliVoices = voices.filter((v) => v.lang === "sw-KE" && (v.name.includes("Rafiki") || v.name.includes("Zuri") || v.name.includes("Aisha") || v.name.includes("Kenya")));
       if (swahiliVoices.length > 0) return swahiliVoices[0];
-      swahiliVoices = voices.filter(v => v.lang === 'sw-KE');
+      swahiliVoices = voices.filter((v) => v.lang === "sw-KE");
       if (swahiliVoices.length > 0) return swahiliVoices[0];
       return null;
     };
 
-    if (recognitionLanguage === 'en-GB') {
+    if (recognitionLanguage === "en-GB") {
       const britishVoice = findBritishEnglishFemale();
-      if (britishVoice) return { voice: britishVoice, language: 'en-GB' };
-      const anyNonMale = voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male'));
-      if (anyNonMale) return { voice: anyNonMale, language: 'en-GB' };
+      if (britishVoice) return { voice: britishVoice, language: "en-GB" };
+      const anyNonMale = voices.find((v) => v.lang.startsWith("en") && !v.name.toLowerCase().includes("male"));
+      if (anyNonMale) return { voice: anyNonMale, language: "en-GB" };
     }
-    if (recognitionLanguage === 'en-US') {
+    if (recognitionLanguage === "en-US") {
       const usVoice = findAmericanEnglishFemale();
-      if (usVoice) return { voice: usVoice, language: 'en-US' };
-      const anyNonMale = voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male'));
-      if (anyNonMale) return { voice: anyNonMale, language: 'en-US' };
+      if (usVoice) return { voice: usVoice, language: "en-US" };
+      const anyNonMale = voices.find((v) => v.lang.startsWith("en") && !v.name.toLowerCase().includes("male"));
+      if (anyNonMale) return { voice: anyNonMale, language: "en-US" };
     }
-    if (recognitionLanguage === 'fr-FR' || recognitionLanguage === 'fr-CA' || recognitionLanguage.startsWith('fr')) {
+    if (recognitionLanguage === "fr-FR" || recognitionLanguage === "fr-CA" || recognitionLanguage.startsWith("fr")) {
       const frenchVoice = findFrenchVoice();
-      if (frenchVoice) return { voice: frenchVoice, language: 'fr-FR' };
+      if (frenchVoice) return { voice: frenchVoice, language: "fr-FR" };
     }
-    if (recognitionLanguage === 'es-ES' || recognitionLanguage.startsWith('es')) {
+    if (recognitionLanguage === "es-ES" || recognitionLanguage.startsWith("es")) {
       const spanishVoice = findSpanishVoice();
-      if (spanishVoice) return { voice: spanishVoice, language: 'es-ES' };
+      if (spanishVoice) return { voice: spanishVoice, language: "es-ES" };
     }
-    if (recognitionLanguage === 'sw-KE' || recognitionLanguage === 'sw-TZ' || recognitionLanguage.startsWith('sw')) {
+    if (recognitionLanguage === "sw-KE" || recognitionLanguage === "sw-TZ" || recognitionLanguage.startsWith("sw")) {
       const swahiliVoice = findSwahiliVoice();
-      if (swahiliVoice) return { voice: swahiliVoice, language: 'sw-KE' };
+      if (swahiliVoice) return { voice: swahiliVoice, language: "sw-KE" };
     }
-    const anyEnglish = voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male'));
-    if (anyEnglish) return { voice: anyEnglish, language: 'en-GB' };
-    if (voices.length > 0) return { voice: voices[0], language: 'en-GB' };
-    return { voice: null, language: 'en-GB' };
+    const anyEnglish = voices.find((v) => v.lang.startsWith("en") && !v.name.toLowerCase().includes("male"));
+    if (anyEnglish) return { voice: anyEnglish, language: "en-GB" };
+    if (voices.length > 0) return { voice: voices[0], language: "en-GB" };
+    return { voice: null, language: "en-GB" };
   };
 
+  // ===== WAIT FOR VOICES =====
   const waitForVoices = (maxAttempts = 10): Promise<void> => {
     return new Promise((resolve) => {
       const check = (attempt = 0) => {
@@ -484,7 +218,7 @@ const Agent = ({
   };
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
       waitForVoices();
       if (window.speechSynthesis.onvoiceschanged !== undefined) {
         window.speechSynthesis.onvoiceschanged = () => waitForVoices();
@@ -492,6 +226,7 @@ const Agent = ({
     }
   }, []);
 
+  // ===== VOICE SERVICE INIT (same as working app) =====
   useEffect(() => {
     if (!mountedRef.current) return;
     if (voiceServiceInitializedRef.current && voiceServiceRef.current) return;
@@ -508,8 +243,8 @@ const Agent = ({
     if (voiceEnabled && !voiceServiceRef.current && !voiceServiceInitializedRef.current) {
       let currentUserId = userId;
       if (!currentUserId) {
-        currentUserId = localStorage.getItem('userId') || `user-${Date.now()}`;
-        localStorage.setItem('userId', currentUserId);
+        currentUserId = localStorage.getItem("userId") || `user-${Date.now()}`;
+        localStorage.setItem("userId", currentUserId);
       }
 
       try {
@@ -519,83 +254,72 @@ const Agent = ({
           type: "practice",
           speechRate: 0.9,
           speechVolume: 0.8,
-          country: farmerCountry,
-          farmerName: farmerName
+          country: learnerCountry,
+          farmerName: learnerName,
         });
         voiceServiceInitializedRef.current = true;
         setVoiceInitializing(false);
-        toast.success(safeT('smart_farmer_here') || "Smart Farmer AI is here!");
+        toast.success(safeT("bds_tutor_here") || "BDS Tutor is here!");
       } catch (error: any) {
         console.error("Failed to initialize VoiceService:", error);
-        toast.error(safeT('voice_service_failed') || "Failed to initialize voice service");
+        toast.error(safeT("voice_service_failed") || "Failed to initialize voice service");
         setVoiceInitializing(false);
       }
     }
-  }, [voiceEnabled, farmerName, farmerCountry, safeT]);
+  }, [voiceEnabled, learnerName, learnerCountry, safeT]);
 
   if (!ready) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
-        <LoadingSpinner fullScreen={false} message="Loading your feed advisor..." />
+        <LoadingSpinner fullScreen={false} message="Loading your lesson..." />
       </div>
     );
   }
 
+  // ===== CLEAN TEXT (same) =====
   const cleanText = (text: string): string => {
     return text
-      .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
-      .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')
-      .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')
-      .replace(/\*\*\*/g, '')
-      .replace(/\*\*/g, '')
-      .replace(/\*/g, '')
-      .replace(/#{1,6}\s?/g, '')
-      .replace(/_/g, '')
-      .replace(/~/g, '')
-      .replace(/`/g, '')
-      .replace(/\s+/g, ' ')
+      .replace(/[\u{1F600}-\u{1F64F}]/gu, "")
+      .replace(/[\u{1F300}-\u{1F5FF}]/gu, "")
+      .replace(/[\u{1F680}-\u{1F6FF}]/gu, "")
+      .replace(/\*\*\*/g, "")
+      .replace(/\*\*/g, "")
+      .replace(/\*/g, "")
+      .replace(/#{1,6}\s?/g, "")
+      .replace(/_/g, "")
+      .replace(/~/g, "")
+      .replace(/`/g, "")
+      .replace(/\s+/g, " ")
       .trim();
   };
 
+  // ===== PREPARE FOR SPEECH (same, plus learner name rotation) =====
   const prepareForSpeech = (text: string): string => {
     let speechText = cleanText(text);
-    const currencyName = getSpokenCurrencyName();
-    const symbol = getDisplaySymbol();
-    const escapedSymbol = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    speechText = speechText.replace(new RegExp(`${escapedSymbol}\\s`, 'g'), `${currencyName} `);
-    speechText = speechText.replace(new RegExp(`\\b${escapedSymbol}\\b`, 'g'), currencyName);
-    speechText = speechText
-      .replace(/Ksh\s/g, `${currencyName} `)
-      .replace(/Ksh\b/g, currencyName)
-      .replace(/USh\s/g, `${currencyName} `)
-      .replace(/USh\b/g, currencyName)
-      .replace(/TSh\s/g, `${currencyName} `)
-      .replace(/TSh\b/g, currencyName);
 
     nameUsageCountRef.current++;
     const useName = nameUsageCountRef.current % 3 === 0;
     speechText = speechText
-      .replace(/\b(farmer)\b/gi, useName ? farmerName : 'the farmer')
-      .replace(/\b(you)\b/gi, useName ? farmerName : 'you')
-      .replace(/\b(your)\b/gi, useName ? `${farmerName}'s` : 'your');
+      .replace(/\b(farmer|learner)\b/gi, useName ? learnerName : "the learner")
+      .replace(/\b(you)\b/gi, useName ? learnerName : "you")
+      .replace(/\b(your)\b/gi, useName ? `${learnerName}'s` : "your");
     return speechText;
   };
 
-  // ========== STREAMING KARAOKE ==========
-  const streamRecommendationKaraoke = async (rawRecommendation: string, index: number) => {
-    console.log(`🎤 [Karaoke] Starting stream for index ${index}, key: ${structuredList[index]?.key}`);
+  // ===== STREAM KARAOKE (identical rAF-based reveal) =====
+  const streamSectionKaraoke = async (rawText: string, index: number) => {
     if (!voiceEnabled || !window.speechSynthesis) return;
 
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 200));
     }
 
-    setActiveStreamingRec(index);
-    setRecommendationStreams(prev => ({ ...prev, [index]: "" }));
+    setActiveStreamingSection(index);
+    setSectionStreams((prev) => ({ ...prev, [index]: "" }));
 
-    const fullRawText = rawRecommendation;
-    const speechText = prepareForSpeech(rawRecommendation);
+    const fullRawText = rawText;
+    const speechText = prepareForSpeech(rawText);
     const totalChars = speechText.length;
     const totalDuration = Math.max(3000, totalChars * 80);
     let startTime = 0;
@@ -603,7 +327,10 @@ const Agent = ({
 
     const updateProgress = (progress: number) => {
       const charIndex = Math.floor(progress * fullRawText.length);
-      setRecommendationStreams(prev => ({ ...prev, [index]: fullRawText.substring(0, charIndex) }));
+      setSectionStreams((prev) => ({
+        ...prev,
+        [index]: fullRawText.substring(0, charIndex),
+      }));
     };
 
     const startAnimation = () => {
@@ -617,7 +344,7 @@ const Agent = ({
         if (progress < 1) {
           animationId = requestAnimationFrame(animate);
         } else {
-          setRecommendationStreams(prev => ({ ...prev, [index]: fullRawText }));
+          setSectionStreams((prev) => ({ ...prev, [index]: fullRawText }));
           animationId = null;
         }
       };
@@ -637,17 +364,17 @@ const Agent = ({
     await new Promise<void>((resolve) => {
       utterance.onend = () => {
         if (animationId) cancelAnimationFrame(animationId);
-        setRecommendationStreams(prev => ({ ...prev, [index]: fullRawText }));
-        setReadRecommendations(prev => new Set(prev).add(index));
-        setActiveStreamingRec(null);
+        setSectionStreams((prev) => ({ ...prev, [index]: fullRawText }));
+        setReadSections((prev) => new Set(prev).add(index));
+        setActiveStreamingSection(null);
         resolve();
       };
       utterance.onerror = (err) => {
         console.error("Speech error:", err);
         if (animationId) cancelAnimationFrame(animationId);
-        setRecommendationStreams(prev => ({ ...prev, [index]: fullRawText }));
-        setReadRecommendations(prev => new Set(prev).add(index));
-        setActiveStreamingRec(null);
+        setSectionStreams((prev) => ({ ...prev, [index]: fullRawText }));
+        setReadSections((prev) => new Set(prev).add(index));
+        setActiveStreamingSection(null);
         resolve();
       };
       window.speechSynthesis.speak(utterance);
@@ -655,6 +382,7 @@ const Agent = ({
     });
   };
 
+  // ===== SPEAK WITH VOICE (short utterances like welcome) =====
   const speakWithVoice = async (text: string): Promise<void> => {
     if (!window.speechSynthesis) return;
     if (!voicesLoaded) await waitForVoices();
@@ -671,82 +399,48 @@ const Agent = ({
     });
   };
 
-  // ========== STREAM ALL RECOMMENDATIONS ==========
-  const streamAllRecommendations = async () => {
-    if (structuredList.length === 0 || recommendationsSpoken) return;
-
-    console.log("🔊 [streamAllRecommendations] Starting, structuredList keys:", structuredList.map(item => item.key));
-    setRecommendationsSpoken(true);
-    nameUsageCountRef.current = 0;
-
-    const currencyName = getSpokenCurrencyName();
-
-    const voiceScriptItem = structuredList.find((item: any) => item.key === 'voice_script');
-
-    if (voiceScriptItem && voiceScriptItem.params?.content) {
-      const voiceScript = voiceScriptItem.params.content;
-      await speakWithVoice(voiceScript);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const voiceIndex = structuredList.indexOf(voiceScriptItem);
-      setReadRecommendations(prev => new Set(prev).add(voiceIndex));
-
-      for (let i = 0; i < structuredList.length; i++) {
-        const item = structuredList[i];
-        if (item.key === 'voice_script') continue;
-
-        let content = '';
-        if (item.params?.content) {
-          content = item.params.content;
-        } else {
-          content = safeT(item.key, item.params);
-        }
-        if (!content || content.trim() === '') continue;
-
-        if (item.key === 'ingredient_list') continue;
-
-        await streamRecommendationKaraoke(content, i);
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-    } else {
-      let introMessage = safeT('prepared_feed_recommendations', 'I\'ve prepared your custom poultry feed formula. ');
-      if (breed && stage && quantityKg) {
-        introMessage += safeT('feed_summary', {
-          breed: breed,
-          stage: stage,
-          quantity: quantityKg,
-          currencyName
-        }) + ' ';
-      }
-
-      await speakWithVoice(introMessage);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      for (let i = 0; i < structuredList.length; i++) {
-        let content = '';
-        const item = structuredList[i];
-        if (item.params?.content) {
-          content = item.params.content;
-        } else {
-          content = safeT(item.key, item.params);
-        }
-        if (!content || content.trim() === '') continue;
-        await streamRecommendationKaraoke(content, i);
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
+  // ===== BUILD SPEECH TEXT FROM SECTION =====
+  const buildSectionSpeech = (s: LessonSection): string => {
+    if (s.type === "quiz" && s.question) {
+      const opts = (s.options || [])
+        .map((o, idx) => `${String.fromCharCode(65 + idx)}. ${o}`)
+        .join(". ");
+      return `${s.title}. ${s.question}. ${opts}.`;
     }
-
-    if (structuredFinancialAdvice) {
-      const financialText = safeT(structuredFinancialAdvice.key, structuredFinancialAdvice.params);
-      await speakWithVoice(financialText);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    await speakWithVoice(safeT('post_feed_recommendations', 'That\'s your feed formula. Ask me more about poultry management.'));
+    return `${s.title}. ${s.content || ""}`;
   };
 
-  // ===== START VOICE INTERVIEW =====
-  const startVoiceInterview = async () => {
+  // ===== STREAM ALL SECTIONS (adapted from streamAllRecommendations) =====
+  const streamAllSections = async () => {
+    if (sections.length === 0 || sectionsSpoken) return;
+
+    setSectionsSpoken(true);
+    nameUsageCountRef.current = 0;
+
+    const introMessage = safeT(
+      "prepared_lesson_recommendations",
+      `Let's begin your lesson on ${topicLabel}.`
+    );
+    await speakWithVoice(introMessage);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    for (let i = 0; i < sections.length; i++) {
+      const speechText = buildSectionSpeech(sections[i]);
+      if (!speechText.trim()) {
+        console.log(`⚠️ Skipping empty section at index ${i}`);
+        continue;
+      }
+      await streamSectionKaraoke(speechText, i);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    await speakWithVoice(
+      safeT("post_lesson_recommendations", "That's your lesson. Well done!")
+    );
+  };
+
+  // ===== START VOICE SESSION (button click — same pattern as working app, no payment) =====
+  const startVoiceSession = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
 
@@ -758,17 +452,17 @@ const Agent = ({
       }
 
       if (!voiceServiceRef.current) {
-        const initToast = toast.loading(safeT('initializing_voice'));
+        const initToast = toast.loading(safeT("initializing_voice", "Initializing voice..."));
         setVoiceInitializing(true);
         let attempts = 0;
         while (!voiceServiceRef.current && attempts < 15) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 300));
           attempts++;
         }
         toast.dismiss(initToast);
         setVoiceInitializing(false);
         if (!voiceServiceRef.current) {
-          toast.error(safeT('voice_service_failed'));
+          toast.error(safeT("voice_service_failed", "Voice service failed"));
           setIsProcessing(false);
           return;
         }
@@ -776,212 +470,152 @@ const Agent = ({
 
       setIsLoading(true);
 
-      if (sessionData && voiceServiceRef.current && typeof voiceServiceRef.current.startFarmerSession === 'function') {
-        await voiceServiceRef.current.startFarmerSession(sessionData);
+      if (sessionData && voiceServiceRef.current && typeof (voiceServiceRef.current as any).startFarmerSession === "function") {
+        try {
+          await (voiceServiceRef.current as any).startFarmerSession(sessionData);
+        } catch (e) {
+          console.warn("startFarmerSession ignored:", e);
+        }
       }
 
-      if (sessionData && !welcomeSpoken) {
+      if (!welcomeSpoken) {
         setWelcomeSpoken(true);
         nameUsageCountRef.current = 0;
-        setRecommendationStreams({});
-        setReadRecommendations(new Set());
+        setSectionStreams({});
+        setReadSections(new Set());
 
-        const welcomeText = safeT('welcome_feed_plan', 'Welcome! I\'ve prepared your customized poultry feed plan based on your birds and stage.');
+        const welcomeText = safeT(
+          "welcome_lesson_plan",
+          `Welcome! Let's learn ${topicLabel}.`
+        );
         await speakWithVoice(welcomeText);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await streamAllRecommendations();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await streamAllSections();
       }
 
-      toast.success(safeT('ready_ask_away'));
+      toast.success(safeT("ready_ask_away", "Ready! Ask away"));
     } catch (error: any) {
       console.error("Failed to start:", error);
-      toast.error(safeT('failed_to_start', { message: error.message }));
+      toast.error(safeT("failed_to_start", { message: error.message }) as unknown as string);
     } finally {
       setIsLoading(false);
       setIsProcessing(false);
     }
   };
 
+  // ===== SUBMIT COMMENTS =====
+  const submitLearnerComment = async () => {
+    if (!learnerComment.trim() || !sessionData) return;
+    setIsCommentSubmitting(true);
+    setCommentSubmitted(false);
+
+    try {
+      const res = await fetch("/api/farmer/farmerscomments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          comment: learnerComment,
+          farmerName: learnerName,
+          userId,
+          sessionId: sessionData.id || interviewId,
+          crop: sessionData.topicLabel || "BDS",
+          country: sessionData.country || "kenya",
+        }),
+      });
+
+      if (res.ok) {
+        setCommentSubmitted(true);
+        setLearnerComment("");
+        toast.success(safeT("feedback_saved", "Comment saved successfully!"));
+      } else {
+        toast.error(safeT("feedback_failed", "Failed to save comment. Please try again."));
+      }
+    } catch (error) {
+      console.error("Error submitting comment:", error);
+      toast.error(safeT("feedback_failed", "Failed to save comment. Please try again."));
+    } finally {
+      setIsCommentSubmitting(false);
+    }
+  };
+
+  // ===== BUTTON STATE =====
   const isStartButtonDisabled = isLoading || voiceInitializing || isProcessing;
 
   const getStartButtonText = () => {
-    if (isLoading) return safeT('starting');
-    if (voiceInitializing) return safeT('initializing');
+    if (isLoading) return safeT("starting", "Starting...");
+    if (voiceInitializing) return safeT("initializing", "Initializing...");
     if (!voiceEnabled) return "Turn Voice ON First";
-    return safeT('start_voice_session', 'Hear Recommendations');
+    return safeT("start_voice_session", "Start Voice Session");
   };
 
-  const isHTMLContent = (content: string): boolean => {
-    return content.trim().startsWith('<table') || content.trim().startsWith('<style');
-  };
-
-  // ========== RENDER FEED RECOMMENDATION TEXT ==========
-  const renderRecommendationText = (item: StructuredItem, idx: number) => {
-    console.log(`🎨 [renderRecommendationText] Rendering item ${idx}, key: ${item.key}`);
-    let displayContent = '';
-    if (item.params?.content) {
-      displayContent = item.params.content;
-    } else {
-      displayContent = safeT(item.key, item.params);
-    }
-
-    if (!displayContent || displayContent.trim() === '') return null;
-
-    const displayedText = recommendationStreams[idx] || '';
-    const isActive = activeStreamingRec === idx;
-    const isRead = readRecommendations.has(idx);
+  // ===== RENDER SECTION (matches renderRecommendationText) =====
+  const renderSection = (section: LessonSection, idx: number) => {
+    const isActive = activeStreamingSection === idx;
+    const isRead = readSections.has(idx);
     if (!isActive && !isRead) return null;
 
-    const finalText = isActive ? displayedText : displayContent;
-    if (!finalText) return null;
-
-    const displaySymbol = getDisplaySymbol();
-    const originalSymbol = currency.symbol;
-    let processedText = finalText;
-    if (displaySymbol !== originalSymbol) {
-      const escapedOrig = originalSymbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      processedText = processedText.replace(new RegExp(escapedOrig, 'g'), displaySymbol);
-    }
-    if (displaySymbol !== 'Ksh') {
-      processedText = processedText.replace(/Ksh/g, displaySymbol);
-    }
-
-    let icon = null;
-    let title = '';
-    if (item.key === 'feed_summary') { icon = <Package className="w-5 h-5" />; title = safeT('feed_summary_title', 'Feed Summary'); }
-    else if (item.key === 'ingredient_table') { icon = <Scale className="w-5 h-5" />; title = safeT('ingredient_table_title', 'Ingredients & Costs'); }
-    else if (item.key === 'ingredient_list') { icon = <ClipboardList className="w-5 h-5" />; title = safeT('ingredient_list_title', 'Ingredient List'); }
-    else if (item.key === 'nutritional_info') { icon = <Beaker className="w-5 h-5" />; title = safeT('nutritional_info_title', 'Nutritional Summary'); }
-    else if (item.key === 'total_cost') { icon = <DollarSign className="w-5 h-5" />; title = safeT('total_cost_title', 'Total Cost'); }
-    else if (item.key === 'mixing_instructions') { icon = <AlertCircle className="w-5 h-5" />; title = safeT('mixing_instructions_title', 'Mixing Instructions'); }
-    else if (item.key === 'safety_warnings') { icon = <Shield className="w-5 h-5" />; title = safeT('safety_warnings_title', 'Safety Warnings'); }
-    else if (item.key === 'voice_script') { icon = <Volume2 className="w-5 h-5" />; title = safeT('voice_summary_title', 'Voice Summary'); }
-    else if (item.key === 'optimization_status') { icon = <Sparkles className="w-5 h-5" />; title = safeT('optimization_status_title', 'Optimization Status'); }
-    else if (item.key === 'weekly_feed_plan') {
-      console.log("📅 [renderRecommendationText] Rendering weekly_feed_plan with content:", displayContent);
-      icon = <Calendar className="w-5 h-5" />;
-      title = safeT('weekly_feed_plan_title', 'Weekly Feed Plan & Financial Summary');
-    }
-    else if (item.key === 'vaccination_schedule') {
-      icon = <Shield className="w-5 h-5" />;
-      title = safeT('vaccination_schedule_title', 'Vaccination Schedule');
-    }
-    else { icon = <Sparkles className="w-5 h-5" />; title = item.key; }
-
-    if (item.key === 'voice_script') {
-      return (
-        <div key={idx} className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-4 border-2 border-purple-300">
-          <div className="flex items-center gap-3 text-purple-700">
-            <Volume2 className="w-5 h-5 animate-pulse" />
-            <span className="font-medium">{safeT('voice_summary_ready', '📢 Full formula summary spoken above')}</span>
-          </div>
-        </div>
-      );
-    }
-
-    if (item.key === 'ingredient_list') {
-      const lines = processedText.split('\n').filter(line => line.trim());
-      return (
-        <div
-          key={idx}
-          className={`rounded-xl p-5 transition-all duration-300 border-2 ${
-            isActive ? 'bg-green-100 border-green-500 shadow-2xl scale-105' : 'bg-green-50 border-green-300'
-          }`}
-        >
-          <div className="flex items-start gap-4">
-            <span className="rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold flex-shrink-0 bg-green-500 text-white">
-              {idx + 1}
-            </span>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-3 text-green-700">
-                {icon}
-                <span className="font-semibold text-sm uppercase tracking-wide">{title}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {lines.map((line, i) => {
-                  const match = line.match(/^([^:]+):\s*([\d.]+)\s*kg/i);
-                  if (match) {
-                    const [, name, amount] = match;
-                    return (
-                      <div key={i} className="flex justify-between items-center p-2 bg-white rounded-lg border border-gray-200">
-                        <span className="text-sm font-medium text-gray-700">{name.trim()}</span>
-                        <span className="text-sm font-bold text-emerald-600">{amount} kg</span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div key={i} className="p-2 bg-white rounded-lg border border-gray-200 text-sm text-gray-700">
-                      {line}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (isHTMLContent(processedText)) {
-      return (
-        <div
-          key={idx}
-          className={`rounded-xl p-5 transition-all duration-300 border-2 ${
-            isActive ? 'bg-blue-100 border-blue-500 shadow-2xl scale-105' : 'bg-blue-50 border-blue-300'
-          }`}
-        >
-          <div className="flex items-start gap-4">
-            <span className="rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold flex-shrink-0 bg-blue-500 text-white">
-              {idx + 1}
-            </span>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2 text-blue-700">
-                {icon}
-                <span className="font-semibold text-sm uppercase tracking-wide">{title}</span>
-              </div>
-              <div
-                className="prose prose-sm max-w-full overflow-x-auto"
-                dangerouslySetInnerHTML={{ __html: processedText }}
-              />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    const lines = processedText.split(/\n/);
-    const progressPercent = (displayedText.length / displayContent.length) * 100;
+    const displayedText = sectionStreams[idx] || "";
+    const fullText = buildSectionSpeech(section);
+    const finalText = isActive ? displayedText : fullText;
+    const progressPercent =
+      fullText.length > 0 ? (displayedText.length / fullText.length) * 100 : 0;
 
     return (
       <div
         key={idx}
         className={`rounded-xl p-5 transition-all duration-300 border-2 ${
-          isActive ? 'bg-blue-100 border-blue-500 shadow-2xl scale-105' : 'bg-blue-50 border-blue-300'
+          isActive
+            ? "bg-purple-100 border-purple-500 shadow-2xl scale-105"
+            : "bg-purple-50 border-purple-300"
         }`}
       >
         <div className="flex items-start gap-4">
-          <span className="rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold flex-shrink-0 bg-blue-500 text-white">
-            {idx + 1}
+          <span className="rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold flex-shrink-0 bg-purple-500 text-white">
+            {isRead && !isActive ? <CheckCircle2 className="w-5 h-5" /> : idx + 1}
           </span>
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2 text-blue-700">
-              {icon}
-              <span className="font-semibold text-sm uppercase tracking-wide">{title}</span>
-            </div>
-            <p className="text-lg text-gray-800 leading-relaxed whitespace-pre-wrap">
-              {lines.map((line, i) => (
-                <span key={i}>
-                  {line}
-                  {i < lines.length - 1 && <br />}
-                </span>
-              ))}
-            </p>
-            {isActive && displayContent.length > 0 && (
+            <h4 className="font-bold text-lg text-purple-900 mb-2">
+              {section.title}
+            </h4>
+
+            {section.type === "quiz" ? (
+              <div>
+                <p className="text-xl text-gray-800 leading-relaxed">
+                  {isActive ? displayedText : section.question}
+                </p>
+                {isRead && !isActive && section.options && (
+                  <ul className="mt-3 space-y-2">
+                    {section.options.map((opt, oi) => (
+                      <li
+                        key={oi}
+                        className={`px-3 py-2 rounded-lg text-sm border ${
+                          oi === section.correctIndex
+                            ? "bg-green-100 text-green-800 font-semibold border-green-300"
+                            : "bg-white text-gray-700 border-gray-200"
+                        }`}
+                      >
+                        {String.fromCharCode(65 + oi)}. {opt}
+                        {oi === section.correctIndex && " ✓"}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <p className="text-xl text-gray-800 leading-relaxed whitespace-pre-wrap">
+                {isActive ? displayedText : section.content}
+              </p>
+            )}
+
+            {isActive && fullText.length > 0 && (
               <div className="mt-3 flex items-center gap-2">
                 <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-600 transition-all duration-150" style={{ width: `${progressPercent}%` }} />
+                  <div
+                    className="h-full bg-purple-600 transition-all duration-150"
+                    style={{ width: `${progressPercent}%` }}
+                  />
                 </div>
-                <span className="text-sm text-blue-700 font-medium">
+                <span className="text-sm text-purple-700 font-medium">
                   {Math.round(progressPercent)}%
                 </span>
               </div>
@@ -992,27 +626,37 @@ const Agent = ({
     );
   };
 
-  // ========== RENDER ==========
+  // ===== RENDER =====
   return (
     <div className="flex flex-col gap-6 p-4 bg-gradient-to-br from-slate-50 to-white rounded-2xl">
-      {/* Header */}
+
+      {/* Header (same layout as working app) */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-emerald-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href={`/interview/${interviewId}`} className="p-2 bg-emerald-100 hover:bg-emerald-200 rounded-xl">
+            <Link
+              href={`/interview/${interviewId}`}
+              className="p-2 bg-emerald-100 hover:bg-emerald-200 rounded-xl"
+            >
               <ArrowLeft className="w-5 h-5 text-emerald-700" />
             </Link>
             <div className="relative">
-              <Image src="/beautiful-avatar.png" alt={userName} width={48} height={48} className="rounded-full size-12 ring-4 ring-emerald-200" />
+              <Image
+                src="/beautiful-avatar.png"
+                alt={userName}
+                width={48}
+                height={48}
+                className="rounded-full size-12 ring-4 ring-emerald-200"
+              />
             </div>
             <div>
               <h4 className="font-bold text-lg text-gray-800">{userName}</h4>
               <div className="flex flex-wrap gap-1 text-xs">
-                {breed && <span className="text-emerald-600 font-medium">{breed}</span>}
-                {stage && <span className="text-gray-500">• {stage}</span>}
-                {quantityKg > 0 && <span className="text-gray-400">• {quantityKg} kg</span>}
-                {county && <span className="text-gray-400">• {county}</span>}
-                {sessionData?.country && <span className="text-gray-400">• {sessionData.country}</span>}
+                {topicLabel && (
+                  <span className="text-emerald-600">{topicLabel}</span>
+                )}
+                {county && <span className="text-gray-500">• {county}</span>}
+                {country && <span className="text-gray-400">• {country}</span>}
               </div>
             </div>
           </div>
@@ -1021,13 +665,31 @@ const Agent = ({
               onClick={() => setVoiceEnabled(!voiceEnabled)}
               className={`flex items-center gap-2 rounded-xl px-4 py-2 font-medium text-sm transition-all ${
                 voiceEnabled
-                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
-                  : 'bg-gradient-to-r from-gray-500 to-gray-600 text-white'
+                  ? "bg-gradient-to-r from-green-500 to-emerald-600 text-white"
+                  : "bg-gradient-to-r from-gray-500 to-gray-600 text-white"
               }`}
             >
-              {voiceEnabled ? <><Mic className="w-4 h-4" /><span>{safeT('voice_on', 'Voice ON')}</span></> : <><MicOff className="w-4 h-4" /><span>{safeT('voice_off', 'Voice OFF')}</span></>}
+              {voiceEnabled ? (
+                <>
+                  <Mic className="w-4 h-4" />
+                  <span>Voice ON</span>
+                </>
+              ) : (
+                <>
+                  <MicOff className="w-4 h-4" />
+                  <span>Voice OFF</span>
+                </>
+              )}
             </button>
-            <button onClick={startVoiceInterview} disabled={isStartButtonDisabled} className={`px-4 py-2 rounded-xl font-medium text-sm whitespace-nowrap ${!isStartButtonDisabled ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+            <button
+              onClick={startVoiceSession}
+              disabled={isStartButtonDisabled}
+              className={`px-4 py-2 rounded-xl font-medium text-sm whitespace-nowrap ${
+                !isStartButtonDisabled
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600"
+                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
+              }`}
+            >
               <span className="flex items-center gap-2">
                 {isLoading && <Loader2 className="w-3 h-3 animate-spin" />}
                 {getStartButtonText()}
@@ -1042,96 +704,84 @@ const Agent = ({
         <Link href={`/ask/${interviewId}`} className="flex-1">
           <button className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-bold hover:from-purple-700 hover:to-pink-700 flex items-center justify-center gap-2">
             <MessageCircle className="w-5 h-5" />
-            {safeT('ask_questions', 'Ask Questions')}
+            Ask Questions
           </button>
         </Link>
-        <button
-          onClick={startVoiceInterview}
-          disabled={isStartButtonDisabled}
-          className="flex-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-bold hover:from-emerald-700 hover:to-teal-700 flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          <Volume2 className="w-5 h-5" />
-          {safeT('hear_recommendations', 'Hear Recommendations')}
-        </button>
       </div>
 
-      {/* Feed Recommendations */}
-      {structuredList.length > 0 && (
-        <div className="bg-white rounded-2xl p-6 border-2 border-blue-200 shadow-xl">
-          <h3 className="font-bold text-2xl mb-4 flex items-center gap-2 text-blue-800">
-            <Sparkles className="w-6 h-6 text-blue-600" />
-            {safeT('custom_feed_formula', 'Custom Feed Formula')}
-            {activeStreamingRec !== null && (
-              <span className="ml-auto flex items-center gap-2 text-blue-600">
+      {/* Lesson panel */}
+      {sections.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 border-2 border-purple-200 shadow-xl">
+          <h3 className="font-bold text-2xl mb-4 flex items-center gap-2 text-purple-800">
+            <Sparkles className="w-6 h-6 text-purple-600" />
+            {moduleName || "Lesson"}
+            {activeStreamingSection !== null && (
+              <span className="ml-auto flex items-center gap-2 text-purple-600">
                 <Volume2 className="w-5 h-5 animate-pulse" />
-                <span className="text-sm">{safeT('speaking', 'Speaking')}</span>
+                <span className="text-sm">Speaking...</span>
               </span>
             )}
           </h3>
+
           <div className="mb-6 p-3 bg-gradient-to-r from-amber-400 to-yellow-500 rounded-xl text-white">
             <p className="text-sm flex items-center gap-2">
               <Rocket className="w-4 h-4" />
-              {safeT('feed_business_tip', 'Business Tip: Mix accurately to avoid waste and maximize growth.')}
+              {safeT(
+                "bds_lesson_tip",
+                "Learn by listening. Each lesson is read aloud — follow along and answer the quiz at the end."
+              )}
             </p>
           </div>
+
           <div className="space-y-4">
-            {structuredList.map((item, idx) => {
-              console.log(`🖼️ [Render] Rendering item ${idx}, key: ${item.key}`);
-              return renderRecommendationText(item, idx);
-            })}
+            {sections.map((item, idx) => renderSection(item, idx))}
           </div>
-          <div className="mt-4 text-center text-sm text-gray-500">
-            {safeT('feed_disclaimer', 'Store feed in a dry, cool place and use within 2 weeks.')}
-          </div>
-          {sessionData?.feedResult?.warnings && sessionData.feedResult.warnings.length > 0 && (
-            <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-300">
-              <p className="text-red-800 text-sm flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                {sessionData.feedResult.warnings.join(' ')}
-              </p>
-            </div>
-          )}
+
+          {readSections.size === sections.length &&
+            activeStreamingSection === null &&
+            !isProcessing && (
+              <div className="mt-4 p-4 bg-green-50 border-2 border-green-300 rounded-xl text-center">
+                <p className="text-green-800 font-semibold mb-3">
+                  🎉 {safeT("lesson_complete", "Lesson complete!")}
+                </p>
+                <Link
+                  href="/generate"
+                  className="inline-block px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium"
+                >
+                  {safeT("choose_another_topic", "Choose another topic")}
+                </Link>
+              </div>
+            )}
         </div>
       )}
 
-      {/* Location Info */}
-      {(county || subCounty || ward || village) && (
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-gray-500" />
-            {safeT('location_info', 'Location')}
-          </h4>
-          <div className="flex flex-wrap gap-2 text-sm text-gray-600">
-            {county && <span className="bg-gray-100 px-3 py-1 rounded-full">🏛️ {county}</span>}
-            {subCounty && <span className="bg-gray-100 px-3 py-1 rounded-full">📌 {subCounty}</span>}
-            {ward && <span className="bg-gray-100 px-3 py-1 rounded-full">📍 {ward}</span>}
-            {village && <span className="bg-gray-100 px-3 py-1 rounded-full">🏘️ {village}</span>}
-          </div>
-        </div>
-      )}
-
-      {/* Farmers Comments Section */}
+      {/* Farmers Comments (kept from working app) */}
       <div className="mt-2 p-4 bg-gray-50 rounded-xl border-2 border-gray-300">
         <h4 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
-          💬 {safeT('farmers_comments', 'Farmers Comments / Suggestions')}
+          💬 {safeT("farmers_comments", "Learner's Comments / Suggestions")}
         </h4>
         <textarea
-          value={farmerComment}
-          onChange={(e) => setFarmerComment(e.target.value)}
-          placeholder={safeT('write_suggestion_placeholder', 'Write your suggestion to improve the content...')}
+          value={learnerComment}
+          onChange={(e) => setLearnerComment(e.target.value)}
+          placeholder={safeT(
+            "write_suggestion_placeholder",
+            "Write your suggestion to improve the content..."
+          )}
           className="w-full p-3 border rounded-xl text-gray-800 h-24 resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
         <button
-          onClick={submitFarmerComment}
-          disabled={!farmerComment.trim() || isCommentSubmitting}
+          onClick={submitLearnerComment}
+          disabled={!learnerComment.trim() || isCommentSubmitting}
           className="mt-2 px-6 py-2 bg-blue-600 text-white rounded-xl font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
         >
           {isCommentSubmitting
-            ? safeT('submitting', 'Submitting...')
-            : safeT('submit_farmers_comment', 'Submit Farmers Comment')}
+            ? safeT("submitting", "Submitting...")
+            : safeT("submit_farmers_comment", "Submit Learner Comment")}
         </button>
         {commentSubmitted && (
-          <p className="text-green-600 text-sm mt-2">✅ {safeT('thanks_for_feedback', 'Thank you! Your comment helps us improve.')}</p>
+          <p className="text-green-600 text-sm mt-2">
+            ✅ {safeT("thanks_for_feedback", "Thank you! Your comment helps us improve.")}
+          </p>
         )}
       </div>
 

@@ -26,16 +26,24 @@ import { getFirestore } from "firebase/firestore";
   //appId: "1:170860596112:web:c2fed1be25b3b4017ac115",
   //measurementId: "G-JPF2L3H08N"
 //};
+//const firebaseConfig = {
+  //apiKey: "AIzaSyCane50tLGLEOrL0Cbjsol_btpZuFb_whE",
+  //authDomain: "poultryfeedformulation-fbedb.firebaseapp.com",
+  //projectId: "poultryfeedformulation-fbedb",
+  //storageBucket: "poultryfeedformulation-fbedb.firebasestorage.app",
+  //messagingSenderId: "959526361397",
+  //appId: "1:959526361397:web:924d0cd13b2031c808547c",
+  //measurementId: "G-7W58XQWQ5Y"
+//};
 const firebaseConfig = {
-  apiKey: "AIzaSyCane50tLGLEOrL0Cbjsol_btpZuFb_whE",
-  authDomain: "poultryfeedformulation-fbedb.firebaseapp.com",
-  projectId: "poultryfeedformulation-fbedb",
-  storageBucket: "poultryfeedformulation-fbedb.firebasestorage.app",
-  messagingSenderId: "959526361397",
-  appId: "1:959526361397:web:924d0cd13b2031c808547c",
-  measurementId: "G-7W58XQWQ5Y"
+  apiKey: "AIzaSyADFem25Qpt6DTRqqDEDdfAMaQUvTDVBBI",
+  authDomain: "bdsw-d86ab.firebaseapp.com",
+  projectId: "bdsw-d86ab",
+  storageBucket: "bdsw-d86ab.firebasestorage.app",
+  messagingSenderId: "7626535722",
+  appId: "1:7626535722:web:2752e2cbef2c5c91afa453",
+  measurementId: "G-5RRB7Q3G4H"
 };
-
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
