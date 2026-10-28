@@ -11,6 +11,29 @@ import {
 } from "@/lib/actions/general.action";
 import { getCurrentUser } from "@/lib/actions/auth.action";
 
+// ✅ NEW — static locale imports (works reliably in server components)
+import enUS from "@/public/locales/en-US/common.json";
+import frLocale from "@/public/locales/fr/common.json";
+import esLocale from "@/public/locales/es/common.json";
+import swLocale from "@/public/locales/sw/common.json";
+
+type LocaleMap = Record<string, string>;
+
+const LOCALES: Record<string, LocaleMap> = {
+  "en-US": enUS as LocaleMap,
+  "en-GB": enUS as LocaleMap,
+  fr: frLocale as LocaleMap,
+  es: esLocale as LocaleMap,
+  sw: swLocale as LocaleMap,
+};
+
+function tr(key: string, language: string): string {
+  if (!key) return "";
+  const langKey = language?.startsWith("en") ? "en-US" : language || "en-US";
+  const locale = LOCALES[langKey] || LOCALES["en-US"];
+  return locale[key] || key;
+}
+
 const InterviewDetails = async ({ params }: RouteParams) => {
   const { id } = await params;
 
@@ -20,7 +43,7 @@ const InterviewDetails = async ({ params }: RouteParams) => {
   console.log("Current user:", user?.id);
 
   const cookieStore = await cookies();
-  const language = cookieStore.get("preferred-language")?.value || "en";
+  const language = cookieStore.get("preferred-language")?.value || "en-US";
   console.log("🌐 Language from cookie:", language);
 
   const session = await getFarmerSessionById(id, language);
@@ -52,8 +75,12 @@ const InterviewDetails = async ({ params }: RouteParams) => {
     feedback = null;
   }
 
-  const topicLabel = session.topicLabel || "Lesson";
-  const moduleName = session.module || "";
+  // ✅ NEW — translate label + module server-side
+  const rawTopicLabel = session.topicLabel || "Lesson";
+  const rawModule = session.module || "";
+  const topicLabel = tr(rawTopicLabel, language);
+  const moduleName = rawModule ? tr(rawModule, language) : "";
+
   const county = session.county || "";
   const subCounty = session.subCounty || "";
   const village = session.village || "";
@@ -90,7 +117,7 @@ const InterviewDetails = async ({ params }: RouteParams) => {
 
         <div className="flex items-center gap-2">
           <span className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg font-medium text-sm">
-            🎓 Learn by Listening
+            🎓 {tr("learn_by_listening", language)}
           </span>
         </div>
       </div>

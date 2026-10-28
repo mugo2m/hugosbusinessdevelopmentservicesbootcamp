@@ -228,8 +228,20 @@ export default function HomeContent({
             )}
           </p>
 
-          {/* UPDATED: Flex container for side-by-side buttons */}
+          {/* ✅ UPDATED: Flex container for 3 buttons */}
           <div className="flex flex-col sm:flex-row gap-3 max-sm:w-full">
+
+            {/* 1. NEW: Enterprise Profile Button */}
+            <Button
+              asChild
+              className="bg-amber-500 hover:bg-amber-600 text-white flex-1"
+            >
+              <Link href="/questionnaire" onClick={stopStartSessionGuidance}>
+                📋 {safeT("enterprise_profile", "Enterprise Profile")}
+              </Link>
+            </Button>
+
+            {/* 2. Start Session Button */}
             <Button
               asChild
               className="bg-green-600 hover:bg-green-700 text-white flex-1"
@@ -238,6 +250,8 @@ export default function HomeContent({
                 🎓 {safeT("start_session", "Start Session")}
               </Link>
             </Button>
+
+            {/* 3. Find Funding Button */}
             <Button
               asChild
               className="bg-blue-600 hover:bg-blue-700 text-white flex-1"

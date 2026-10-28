@@ -18,8 +18,6 @@ import {
   ArrowLeft,
   MessageCircle,
   Rocket,
-  BookOpen,
-  GraduationCap,
   CheckCircle2,
 } from "lucide-react";
 
@@ -45,7 +43,19 @@ interface LessonSection {
 const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   const { t, ready, i18n } = useOfflineTranslation();
 
-  // ===== SAFE TRANSLATION (same pattern as working app) =====
+  // ✅ translate a single string key
+  const tr = (s?: string): string => (s ? safeT(s) : "");
+
+  // ✅ translate every text field in a section
+  const translateSection = (s: LessonSection): LessonSection => ({
+    ...s,
+    title: tr(s.title),
+    content: s.content ? tr(s.content) : undefined,
+    question: s.question ? tr(s.question) : undefined,
+    options: s.options ? s.options.map(tr) : undefined,
+  });
+
+  // ===== SAFE TRANSLATION =====
   const safeT = (key: string, params?: any): string => {
     try {
       if (key && (key.includes(" ") || key.includes("\n") || key.includes("."))) return key;
@@ -61,7 +71,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     }
   };
 
-  // ===== STATE (mirrors working app) =====
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [voiceInitializing, setVoiceInitializing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -74,7 +83,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   const [sectionStreams, setSectionStreams] = useState<{ [key: number]: string }>({});
   const [activeStreamingSection, setActiveStreamingSection] = useState<number | null>(null);
 
-  // Farmers comments
   const [learnerComment, setLearnerComment] = useState<string>("");
   const [isCommentSubmitting, setIsCommentSubmitting] = useState<boolean>(false);
   const [commentSubmitted, setCommentSubmitted] = useState<boolean>(false);
@@ -93,7 +101,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   const county = sessionData?.county || "";
   const country = sessionData?.country || "";
 
-  // ===== LOAD SECTIONS =====
   useEffect(() => {
     const raw = sessionData?.lessonSections || sessionData?.structuredList || [];
     if (Array.isArray(raw) && raw.length > 0) {
@@ -102,7 +109,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     }
   }, [sessionData]);
 
-  // ===== RECOGNITION LANGUAGE (from working app) =====
   const recognitionLanguage = (() => {
     const lang = i18n.language || "en";
     if (lang === "en-GB") return "en-GB";
@@ -113,7 +119,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     return "en-US";
   })();
 
-  // ===== GET BEST VOICE (identical to working app) =====
   const getBestVoice = () => {
     const voices = window.speechSynthesis.getVoices();
 
@@ -198,7 +203,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     return { voice: null, language: "en-GB" };
   };
 
-  // ===== WAIT FOR VOICES =====
   const waitForVoices = (maxAttempts = 10): Promise<void> => {
     return new Promise((resolve) => {
       const check = (attempt = 0) => {
@@ -226,7 +230,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     }
   }, []);
 
-  // ===== VOICE SERVICE INIT (same as working app) =====
   useEffect(() => {
     if (!mountedRef.current) return;
     if (voiceServiceInitializedRef.current && voiceServiceRef.current) return;
@@ -259,10 +262,10 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
         });
         voiceServiceInitializedRef.current = true;
         setVoiceInitializing(false);
-        toast.success(safeT("bds_tutor_here") || "BDS Tutor is here!");
+        toast.success(safeT("bds_tutor_here"));
       } catch (error: any) {
         console.error("Failed to initialize VoiceService:", error);
-        toast.error(safeT("voice_service_failed") || "Failed to initialize voice service");
+        toast.error(safeT("voice_service_failed"));
         setVoiceInitializing(false);
       }
     }
@@ -271,12 +274,11 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   if (!ready) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
-        <LoadingSpinner fullScreen={false} message="Loading your lesson..." />
+        <LoadingSpinner fullScreen={false} message={safeT("loading")} />
       </div>
     );
   }
 
-  // ===== CLEAN TEXT (same) =====
   const cleanText = (text: string): string => {
     return text
       .replace(/[\u{1F600}-\u{1F64F}]/gu, "")
@@ -293,7 +295,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
       .trim();
   };
 
-  // ===== PREPARE FOR SPEECH (same, plus learner name rotation) =====
   const prepareForSpeech = (text: string): string => {
     let speechText = cleanText(text);
 
@@ -306,7 +307,18 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     return speechText;
   };
 
-  // ===== STREAM KARAOKE (identical rAF-based reveal) =====
+  // ✅ translate before speaking
+  const buildSectionSpeech = (raw: LessonSection): string => {
+    const s = translateSection(raw);
+    if (s.type === "quiz" && s.question) {
+      const opts = (s.options || [])
+        .map((o, idx) => `${String.fromCharCode(65 + idx)}. ${o}`)
+        .join(". ");
+      return `${s.title}. ${s.question}. ${opts}.`;
+    }
+    return `${s.title}. ${s.content || ""}`;
+  };
+
   const streamSectionKaraoke = async (rawText: string, index: number) => {
     if (!voiceEnabled || !window.speechSynthesis) return;
 
@@ -382,7 +394,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     });
   };
 
-  // ===== SPEAK WITH VOICE (short utterances like welcome) =====
   const speakWithVoice = async (text: string): Promise<void> => {
     if (!window.speechSynthesis) return;
     if (!voicesLoaded) await waitForVoices();
@@ -399,28 +410,13 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     });
   };
 
-  // ===== BUILD SPEECH TEXT FROM SECTION =====
-  const buildSectionSpeech = (s: LessonSection): string => {
-    if (s.type === "quiz" && s.question) {
-      const opts = (s.options || [])
-        .map((o, idx) => `${String.fromCharCode(65 + idx)}. ${o}`)
-        .join(". ");
-      return `${s.title}. ${s.question}. ${opts}.`;
-    }
-    return `${s.title}. ${s.content || ""}`;
-  };
-
-  // ===== STREAM ALL SECTIONS (adapted from streamAllRecommendations) =====
   const streamAllSections = async () => {
     if (sections.length === 0 || sectionsSpoken) return;
 
     setSectionsSpoken(true);
     nameUsageCountRef.current = 0;
 
-    const introMessage = safeT(
-      "prepared_lesson_recommendations",
-      `Let's begin your lesson on ${topicLabel}.`
-    );
+    const introMessage = safeT("prepared_lesson_recommendations");
     await speakWithVoice(introMessage);
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -434,25 +430,22 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
       await new Promise((resolve) => setTimeout(resolve, 800));
     }
 
-    await speakWithVoice(
-      safeT("post_lesson_recommendations", "That's your lesson. Well done!")
-    );
+    await speakWithVoice(safeT("post_lesson_recommendations"));
   };
 
-  // ===== START VOICE SESSION (button click — same pattern as working app, no payment) =====
   const startVoiceSession = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
 
     try {
       if (!voiceEnabled) {
-        toast.error("Please turn voice ON first by clicking the 'Voice ON' button");
+        toast.error(safeT("voice_on_first_hint"));
         setIsProcessing(false);
         return;
       }
 
       if (!voiceServiceRef.current) {
-        const initToast = toast.loading(safeT("initializing_voice", "Initializing voice..."));
+        const initToast = toast.loading(safeT("initializing_voice"));
         setVoiceInitializing(true);
         let attempts = 0;
         while (!voiceServiceRef.current && attempts < 15) {
@@ -462,7 +455,7 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
         toast.dismiss(initToast);
         setVoiceInitializing(false);
         if (!voiceServiceRef.current) {
-          toast.error(safeT("voice_service_failed", "Voice service failed"));
+          toast.error(safeT("voice_service_failed"));
           setIsProcessing(false);
           return;
         }
@@ -484,16 +477,13 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
         setSectionStreams({});
         setReadSections(new Set());
 
-        const welcomeText = safeT(
-          "welcome_lesson_plan",
-          `Welcome! Let's learn ${topicLabel}.`
-        );
+        const welcomeText = safeT("welcome_lesson_plan");
         await speakWithVoice(welcomeText);
         await new Promise((resolve) => setTimeout(resolve, 2000));
         await streamAllSections();
       }
 
-      toast.success(safeT("ready_ask_away", "Ready! Ask away"));
+      toast.success(safeT("ready_ask_away"));
     } catch (error: any) {
       console.error("Failed to start:", error);
       toast.error(safeT("failed_to_start", { message: error.message }) as unknown as string);
@@ -503,7 +493,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     }
   };
 
-  // ===== SUBMIT COMMENTS =====
   const submitLearnerComment = async () => {
     if (!learnerComment.trim() || !sessionData) return;
     setIsCommentSubmitting(true);
@@ -526,36 +515,36 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
       if (res.ok) {
         setCommentSubmitted(true);
         setLearnerComment("");
-        toast.success(safeT("feedback_saved", "Comment saved successfully!"));
+        toast.success(safeT("feedback_saved"));
       } else {
-        toast.error(safeT("feedback_failed", "Failed to save comment. Please try again."));
+        toast.error(safeT("feedback_failed"));
       }
     } catch (error) {
       console.error("Error submitting comment:", error);
-      toast.error(safeT("feedback_failed", "Failed to save comment. Please try again."));
+      toast.error(safeT("feedback_failed"));
     } finally {
       setIsCommentSubmitting(false);
     }
   };
 
-  // ===== BUTTON STATE =====
   const isStartButtonDisabled = isLoading || voiceInitializing || isProcessing;
 
   const getStartButtonText = () => {
-    if (isLoading) return safeT("starting", "Starting...");
-    if (voiceInitializing) return safeT("initializing", "Initializing...");
-    if (!voiceEnabled) return "Turn Voice ON First";
-    return safeT("start_voice_session", "Start Voice Session");
+    if (isLoading) return safeT("starting");
+    if (voiceInitializing) return safeT("initializing");
+    if (!voiceEnabled) return safeT("voice_on_first");
+    return safeT("start_voice_session");
   };
 
-  // ===== RENDER SECTION (matches renderRecommendationText) =====
-  const renderSection = (section: LessonSection, idx: number) => {
+  // ✅ translate before display
+  const renderSection = (rawSection: LessonSection, idx: number) => {
+    const section = translateSection(rawSection);
     const isActive = activeStreamingSection === idx;
     const isRead = readSections.has(idx);
     if (!isActive && !isRead) return null;
 
     const displayedText = sectionStreams[idx] || "";
-    const fullText = buildSectionSpeech(section);
+    const fullText = buildSectionSpeech(rawSection);
     const finalText = isActive ? displayedText : fullText;
     const progressPercent =
       fullText.length > 0 ? (displayedText.length / fullText.length) * 100 : 0;
@@ -626,11 +615,10 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     );
   };
 
-  // ===== RENDER =====
   return (
     <div className="flex flex-col gap-6 p-4 bg-gradient-to-br from-slate-50 to-white rounded-2xl">
 
-      {/* Header (same layout as working app) */}
+      {/* Header */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-emerald-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -653,7 +641,7 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
               <h4 className="font-bold text-lg text-gray-800">{userName}</h4>
               <div className="flex flex-wrap gap-1 text-xs">
                 {topicLabel && (
-                  <span className="text-emerald-600">{topicLabel}</span>
+                  <span className="text-emerald-600">{safeT(topicLabel)}</span>
                 )}
                 {county && <span className="text-gray-500">• {county}</span>}
                 {country && <span className="text-gray-400">• {country}</span>}
@@ -672,12 +660,12 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
               {voiceEnabled ? (
                 <>
                   <Mic className="w-4 h-4" />
-                  <span>Voice ON</span>
+                  <span>{safeT("voice_on")}</span>
                 </>
               ) : (
                 <>
                   <MicOff className="w-4 h-4" />
-                  <span>Voice OFF</span>
+                  <span>{safeT("voice_off")}</span>
                 </>
               )}
             </button>
@@ -704,7 +692,7 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
         <Link href={`/ask/${interviewId}`} className="flex-1">
           <button className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-bold hover:from-purple-700 hover:to-pink-700 flex items-center justify-center gap-2">
             <MessageCircle className="w-5 h-5" />
-            Ask Questions
+            {safeT("ask_questions")}
           </button>
         </Link>
       </div>
@@ -714,11 +702,11 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
         <div className="bg-white rounded-2xl p-6 border-2 border-purple-200 shadow-xl">
           <h3 className="font-bold text-2xl mb-4 flex items-center gap-2 text-purple-800">
             <Sparkles className="w-6 h-6 text-purple-600" />
-            {moduleName || "Lesson"}
+            {moduleName ? safeT(moduleName) : safeT("lesson_label")}
             {activeStreamingSection !== null && (
               <span className="ml-auto flex items-center gap-2 text-purple-600">
                 <Volume2 className="w-5 h-5 animate-pulse" />
-                <span className="text-sm">Speaking...</span>
+                <span className="text-sm">{safeT("speaking")}</span>
               </span>
             )}
           </h3>
@@ -726,10 +714,7 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
           <div className="mb-6 p-3 bg-gradient-to-r from-amber-400 to-yellow-500 rounded-xl text-white">
             <p className="text-sm flex items-center gap-2">
               <Rocket className="w-4 h-4" />
-              {safeT(
-                "bds_lesson_tip",
-                "Learn by listening. Each lesson is read aloud — follow along and answer the quiz at the end."
-              )}
+              {safeT("bds_lesson_tip")}
             </p>
           </div>
 
@@ -742,31 +727,28 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
             !isProcessing && (
               <div className="mt-4 p-4 bg-green-50 border-2 border-green-300 rounded-xl text-center">
                 <p className="text-green-800 font-semibold mb-3">
-                  🎉 {safeT("lesson_complete", "Lesson complete!")}
+                  🎉 {safeT("lesson_complete")}
                 </p>
                 <Link
                   href="/generate"
                   className="inline-block px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium"
                 >
-                  {safeT("choose_another_topic", "Choose another topic")}
+                  {safeT("choose_another_topic")}
                 </Link>
               </div>
             )}
         </div>
       )}
 
-      {/* Farmers Comments (kept from working app) */}
+      {/* Learner Comments */}
       <div className="mt-2 p-4 bg-gray-50 rounded-xl border-2 border-gray-300">
         <h4 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
-          💬 {safeT("farmers_comments", "Learner's Comments / Suggestions")}
+          💬 {safeT("farmers_comments")}
         </h4>
         <textarea
           value={learnerComment}
           onChange={(e) => setLearnerComment(e.target.value)}
-          placeholder={safeT(
-            "write_suggestion_placeholder",
-            "Write your suggestion to improve the content..."
-          )}
+          placeholder={safeT("write_suggestion_placeholder")}
           className="w-full p-3 border rounded-xl text-gray-800 h-24 resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
         />
         <button
@@ -775,12 +757,12 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
           className="mt-2 px-6 py-2 bg-blue-600 text-white rounded-xl font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
         >
           {isCommentSubmitting
-            ? safeT("submitting", "Submitting...")
-            : safeT("submit_farmers_comment", "Submit Learner Comment")}
+            ? safeT("submitting")
+            : safeT("submit_farmers_comment")}
         </button>
         {commentSubmitted && (
           <p className="text-green-600 text-sm mt-2">
-            ✅ {safeT("thanks_for_feedback", "Thank you! Your comment helps us improve.")}
+            ✅ {safeT("thanks_for_feedback")}
           </p>
         )}
       </div>
