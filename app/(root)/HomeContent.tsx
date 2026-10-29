@@ -228,10 +228,8 @@ export default function HomeContent({
             )}
           </p>
 
-          {/* ✅ UPDATED: Flex container for 3 buttons */}
+          {/* 3 buttons */}
           <div className="flex flex-col sm:flex-row gap-3 max-sm:w-full">
-
-            {/* 1. NEW: Enterprise Profile Button */}
             <Button
               asChild
               className="bg-amber-500 hover:bg-amber-600 text-white flex-1"
@@ -241,7 +239,6 @@ export default function HomeContent({
               </Link>
             </Button>
 
-            {/* 2. Start Session Button */}
             <Button
               asChild
               className="bg-green-600 hover:bg-green-700 text-white flex-1"
@@ -251,7 +248,6 @@ export default function HomeContent({
               </Link>
             </Button>
 
-            {/* 3. Find Funding Button */}
             <Button
               asChild
               className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
@@ -300,12 +296,14 @@ export default function HomeContent({
                   <div className="flex items-start gap-3 mb-3">
                     <span className="text-3xl flex-shrink-0">📚</span>
                     <div className="flex-1 min-w-0">
+                      {/* ✅ CHANGED: wrap topicLabel in safeT() */}
                       <h3 className="font-semibold text-gray-800 line-clamp-2">
-                        {topicLabel}
+                        {safeT(topicLabel)}
                       </h3>
                       {moduleName && (
+                        // ✅ CHANGED: wrap moduleName in safeT()
                         <p className="text-xs text-emerald-600 mt-1 font-medium">
-                          {moduleName}
+                          {safeT(moduleName)}
                         </p>
                       )}
                       {locationParts.length > 0 && (

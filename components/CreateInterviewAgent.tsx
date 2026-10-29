@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { useCurrency } from "@/lib/context/CurrencyContext";
 import { CurrencySwitcher } from "@/components/CurrencySwitcher";
-// ✅ Static topics — no Firestore fetch
 import { BDS_TOPICS } from "@/lib/data/bdsTopics";
 
 interface CreateInterviewAgentProps {
@@ -22,7 +21,6 @@ interface CreateInterviewAgentProps {
   profileImage?: string;
 }
 
-// ========== COUNTRY LIST ==========
 const countryOptions = [
   "Algeria","Antigua and Barbuda","Argentina","Australia","Bahamas","Barbados","Belgium","Belize","Benin",
   "Bolivia","Botswana","Burkina Faso","Burundi","Cameroon","Canada","Central African Republic","Chad",
@@ -84,10 +82,8 @@ const CreateInterviewAgent = ({
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const questionWordsRef = useRef<string[]>([]);
 
-  // ========== TOPICS — static, from lib/data/bdsTopics.ts ==========
   const topicOptions = BDS_TOPICS;
 
-  // ========== LEARNER DETAILS (6 fields only) ==========
   const [farmerDetails, setFarmerDetails] = useState({
     country: "",
     topic: "",
@@ -143,7 +139,6 @@ const CreateInterviewAgent = ({
     }
   }, [i18n.language, currentStep]);
 
-  // ========== QUESTION DEFINITIONS (6 total) ==========
   const getQuestions = useCallback(() => {
     return [
       {
@@ -159,7 +154,6 @@ const CreateInterviewAgent = ({
         type: "dropdown",
         options: topicOptions.map((t) => ({
           id: t.id,
-          // ✅ Translate the topicLabel key here
           label: `${t.module} — ${safeT(t.topicLabel)}`,
         })) as any[],
         sectionKey: "section_topic",
@@ -202,7 +196,6 @@ const CreateInterviewAgent = ({
     setDebugInfo((prev) => ({ ...prev, totalQuestions }));
   }, [totalQuestions]);
 
-  // ========== SPEECH RECOGNITION ==========
   useEffect(() => {
     let isMounted = true;
 
@@ -287,7 +280,6 @@ const CreateInterviewAgent = ({
     };
   }, [recognitionLanguage, safeT]);
 
-  // ========== PRE-LOAD VOICES ==========
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
 
@@ -315,7 +307,6 @@ const CreateInterviewAgent = ({
     };
   }, []);
 
-  // ========== WARM UP TTS ==========
   const warmUpTTS = useCallback(() => {
     if (ttsWarmedUpRef.current) return;
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -343,7 +334,6 @@ const CreateInterviewAgent = ({
     }
   }, []);
 
-  // ========== STREAMING KARAOKE ==========
   const streamQuestionWithVoice = useCallback(
     (fullText: string): Promise<void> => {
       return new Promise((resolve) => {
@@ -524,7 +514,6 @@ const CreateInterviewAgent = ({
     [currency, voiceEnabled, recognitionLanguage, getSpokenCurrencyName, getDisplaySymbol]
   );
 
-  // ========== VOICE ASSISTANT REF ==========
   useEffect(() => {
     if (!voiceEnabled) {
       voiceAssistantRef.current = null;
@@ -542,7 +531,6 @@ const CreateInterviewAgent = ({
     }
   }, [voiceEnabled, safeT, warmUpTTS, streamQuestionWithVoice]);
 
-  // ========== SPEAK ACKNOWLEDGMENT ==========
   const speakAcknowledgment = async (answer: string, fieldId: string) => {
     const spokenCurrencyName = getSpokenCurrencyName();
     const currencySymbol = currency.symbol;
@@ -562,7 +550,6 @@ const CreateInterviewAgent = ({
       setCountry(answer.toLowerCase());
     } else if (fieldId === "topic") {
       const chosen = topicOptions.find((t) => t.id === answer);
-      // ✅ Translate the topic name for the voice acknowledgment
       acknowledgment = safeT("ack_topic", {
         answer: chosen ? safeT(chosen.topicLabel) : spokenAnswer,
       });
@@ -584,7 +571,6 @@ const CreateInterviewAgent = ({
     toast.success(safeT("recorded", { answer }));
   };
 
-  // ========== PROCESS ANSWER ==========
   const processAnswer = async (answer: string) => {
     if (currentStep !== "configuring") return;
 
@@ -643,7 +629,6 @@ const CreateInterviewAgent = ({
     }
   };
 
-  // ========== LISTENING HELPERS ==========
   const safeStartListening = () => {
     if (isSpeaking || isStreaming) return;
     if (!recognitionRef.current || isRecognitionActiveRef.current) return;
@@ -666,7 +651,6 @@ const CreateInterviewAgent = ({
     }
   };
 
-  // ========== START SETUP ==========
   const startVoiceSetup = async () => {
     if (!voiceEnabled || !voiceAssistantRef.current) {
       toast.error(safeT("enable_voice_first"));
@@ -693,7 +677,6 @@ const CreateInterviewAgent = ({
     await askQuestion(0);
   };
 
-  // ========== ASK QUESTION ==========
   const askQuestion = async (step: number) => {
     if (!voiceAssistantRef.current || step >= allQuestions.length) return;
     if (isSpeaking) await new Promise((resolve) => setTimeout(resolve, 500));
@@ -714,7 +697,6 @@ const CreateInterviewAgent = ({
     }
   };
 
-  // ========== GENERATE SESSION ==========
   const generateSession = async () => {
     if (!voiceAssistantRef.current) return;
     setIsLoading(true);
@@ -796,7 +778,6 @@ const CreateInterviewAgent = ({
     if (userTranscript.trim()) processAnswer(userTranscript);
   };
 
-  // ========== RENDER INPUT ==========
   const renderInput = useCallback(() => {
     const q = allQuestions[configStep];
     if (!q) return null;
@@ -855,7 +836,6 @@ const CreateInterviewAgent = ({
     return null;
   }, [configStep, allQuestions, userTranscript, safeT]);
 
-  // ========== RENDER ==========
   const colors = {
     background: "bg-gradient-to-br from-slate-50 to-white",
     card: "bg-white/80 backdrop-blur-sm",
@@ -869,161 +849,170 @@ const CreateInterviewAgent = ({
       : "";
 
   return (
-    <div className={`flex flex-col gap-6 p-4 ${colors.background} rounded-2xl min-h-screen`}>
-      {/* Header */}
-      <div className={`${colors.card} rounded-2xl p-5 shadow-xl border`}>
-        <div className="flex justify-between items-center flex-wrap gap-2">
-          <div className="flex items-center gap-4">
-            <Image
-              src={profileImage || "/farmer-avatar.png"}
-              alt="Learner"
-              width={48}
-              height={48}
-              className="rounded-full ring-4"
-            />
-            <div>
-              <h4 className="font-bold text-xl">{userName || safeT("learner")}</h4>
-              <p className="text-sm text-gray-500">
-                {safeT("bds_learner_building") || "BDS Learner • Building Your Business"}
-              </p>
+    // ✅ OUTER WRAPPER — full-screen photo background (no dark overlay)
+    <div
+      className="min-h-screen w-full flex justify-center items-start bg-cover bg-center bg-no-repeat relative p-4"
+      style={{ backgroundImage: "url('/muiruri.jpg')" }}
+    >
+      {/* ✅ YOUR ORIGINAL LAYOUT — untouched */}
+      <div className="relative z-10 flex flex-col gap-6 p-4 rounded-2xl w-full max-w-4xl">
+
+        {/* Header */}
+        <div className={`${colors.card} rounded-2xl p-5 shadow-xl border`}>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <div className="flex items-center gap-4">
+              <Image
+                src={profileImage || "/farmer-avatar.png"}
+                alt="Learner"
+                width={48}
+                height={48}
+                className="rounded-full ring-4"
+              />
+              <div>
+                <h4 className="font-bold text-xl">{userName || safeT("learner")}</h4>
+                <p className="text-sm text-gray-500">
+                  {safeT("bds_learner_building") || "BDS Learner • Building Your Business"}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="bg-white/80 rounded-xl px-2 py-1 border border-gray-200 shadow-sm">
-              <CurrencySwitcher />
-            </div>
-            <div className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl px-3 py-2 border border-white-30">
-              <Mic className={`w-5 h-5 text-white ${isSpeaking ? "animate-pulse" : ""}`} />
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="bg-white/80 rounded-xl px-2 py-1 border border-gray-200 shadow-sm">
+                <CurrencySwitcher />
+              </div>
+              <div className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl px-3 py-2 border border-white-30">
+                <Mic className={`w-5 h-5 text-white ${isSpeaking ? "animate-pulse" : ""}`} />
+                <button
+                  onClick={() => setVoiceEnabled(!voiceEnabled)}
+                  disabled={currentStep === "generating" || currentStep === "redirecting"}
+                  className={`text-white font-medium focus:outline-none ${
+                    currentStep === "generating" || currentStep === "redirecting"
+                      ? "opacity-50 cursor-not-allowed text-lg"
+                      : "text-sm"
+                  }`}
+                >
+                  {currentStep === "generating" || currentStep === "redirecting"
+                    ? safeT("generating_please_wait")
+                    : voiceEnabled
+                    ? safeT("voice_on")
+                    : safeT("voice_off")}
+                </button>
+              </div>
               <button
-                onClick={() => setVoiceEnabled(!voiceEnabled)}
-                disabled={currentStep === "generating" || currentStep === "redirecting"}
-                className={`text-white font-medium focus:outline-none ${
-                  currentStep === "generating" || currentStep === "redirecting"
-                    ? "opacity-50 cursor-not-allowed text-lg"
-                    : "text-sm"
+                onClick={startVoiceSetup}
+                disabled={!voiceEnabled || currentStep !== "idle"}
+                className={`px-6 py-2 rounded-xl font-bold text-sm ${
+                  voiceEnabled && currentStep === "idle"
+                    ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:scale-105 transition-all"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
               >
                 {currentStep === "generating" || currentStep === "redirecting"
                   ? safeT("generating_please_wait")
-                  : voiceEnabled
-                  ? safeT("voice_on")
-                  : safeT("voice_off")}
+                  : currentStep === "idle"
+                  ? safeT("start_setup")
+                  : safeT("loading")}
               </button>
             </div>
-            <button
-              onClick={startVoiceSetup}
-              disabled={!voiceEnabled || currentStep !== "idle"}
-              className={`px-6 py-2 rounded-xl font-bold text-sm ${
-                voiceEnabled && currentStep === "idle"
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:scale-105 transition-all"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
-              }`}
-            >
-              {currentStep === "generating" || currentStep === "redirecting"
-                ? safeT("generating_please_wait")
-                : currentStep === "idle"
-                ? safeT("start_setup")
-                : safeT("loading")}
-            </button>
           </div>
-        </div>
-        {isSpeaking && (
-          <div className="mt-2 text-xs text-blue-600 flex items-center gap-1">
-            <Volume2 className="w-3 h-3 animate-pulse" />
-            <span>
-              {safeT("speaking")} {wordProgress}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Question Display */}
-      {currentStep === "configuring" && allQuestions.length > 0 && (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-8 shadow-xl border-2 border-green-300 min-h-[300px]">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center font-bold">
-              {configStep + 1}
-            </span>
-            <h4 className="font-bold text-xl text-emerald-800">
-              {safeT("question_x_of_y", { current: configStep + 1, total: allQuestions.length })}
-            </h4>
-            {currentSection && <p className="text-sm text-emerald-600 ml-auto">{currentSection}</p>}
-            {isStreaming && (
-              <span className="ml-auto flex items-center gap-2 text-emerald-600">
-                <Volume2 className="w-5 h-5 animate-pulse" />
-                <span className="text-sm">{wordProgress}</span>
+          {isSpeaking && (
+            <div className="mt-2 text-xs text-blue-600 flex items-center gap-1">
+              <Volume2 className="w-3 h-3 animate-pulse" />
+              <span>
+                {safeT("speaking")} {wordProgress}
               </span>
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border-2 border-emerald-200 min-h-[120px]">
-            {streamingQuestion ? (
-              <p className="text-3xl text-gray-800">
-                {streamingQuestion.split(" ").map((word, wordIdx, arr) => (
-                  <span key={wordIdx}>
-                    <span className="text-emerald-700 font-bold">{word}</span>
-                    {wordIdx < arr.length - 1 ? " " : ""}
-                  </span>
-                ))}
-              </p>
-            ) : (
-              <p className="text-3xl text-gray-400 italic">
-                {isStreaming ? safeT("speaking_dots") : safeT("ready_for_answer")}
-              </p>
-            )}
-          </div>
-
-          {!isStreaming && streamingQuestion && (
-            <div className="mt-6">
-              <div className="bg-white rounded-xl border-2 border-purple-200 p-6">
-                {renderInput()}
-                <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={submitAnswer}
-                    disabled={!userTranscript.trim()}
-                    className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    {safeT("submit_answer")}
-                  </button>
-                </div>
-              </div>
-
-              {lastSubmittedAnswer && (
-                <div className="mt-3 p-3 bg-blue-50 rounded-xl border-2 border-blue-200">
-                  <p className="text-sm text-blue-800 flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-blue-600" />
-                    {safeT("your_answer")}:{" "}
-                    <span className="font-bold text-blue-900">{lastSubmittedAnswer}</span>
-                  </p>
-                  <p className="text-xs text-blue-600 mt-1">
-                    {safeT("voice_confirmation_sent")}
-                  </p>
-                </div>
-              )}
-
-              {debugInfo.isListening && (
-                <div className="mt-3 p-3 bg-gradient-to-r from-red-50 to-rose-50 rounded-xl flex items-center gap-3">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-red-600">
-                    {safeT("listening_speak_now")}
-                  </span>
-                </div>
-              )}
             </div>
           )}
         </div>
-      )}
 
-      {/* Stop Button */}
-      {(currentStep === "configuring" || currentStep === "generating") && (
-        <button
-          onClick={stopEverything}
-          className="px-5 py-3 bg-gradient-to-r from-rose-500 to-red-500 text-white rounded-xl mx-auto w-48 font-medium flex items-center justify-center gap-2"
-        >
-          <span>{safeT("stop_setup")}</span>
-        </button>
-      )}
+        {/* Question Display */}
+        {currentStep === "configuring" && allQuestions.length > 0 && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-8 shadow-xl border-2 border-green-300 min-h-[300px]">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center font-bold">
+                {configStep + 1}
+              </span>
+              <h4 className="font-bold text-xl text-emerald-800">
+                {safeT("question_x_of_y", { current: configStep + 1, total: allQuestions.length })}
+              </h4>
+              {currentSection && <p className="text-sm text-emerald-600 ml-auto">{currentSection}</p>}
+              {isStreaming && (
+                <span className="ml-auto flex items-center gap-2 text-emerald-600">
+                  <Volume2 className="w-5 h-5 animate-pulse" />
+                  <span className="text-sm">{wordProgress}</span>
+                </span>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl p-6 border-2 border-emerald-200 min-h-[120px]">
+              {streamingQuestion ? (
+                <p className="text-3xl text-gray-800">
+                  {streamingQuestion.split(" ").map((word, wordIdx, arr) => (
+                    <span key={wordIdx}>
+                      <span className="text-emerald-700 font-bold">{word}</span>
+                      {wordIdx < arr.length - 1 ? " " : ""}
+                    </span>
+                  ))}
+                </p>
+              ) : (
+                <p className="text-3xl text-gray-400 italic">
+                  {isStreaming ? safeT("speaking_dots") : safeT("ready_for_answer")}
+                </p>
+              )}
+            </div>
+
+            {!isStreaming && streamingQuestion && (
+              <div className="mt-6">
+                <div className="bg-white rounded-xl border-2 border-purple-200 p-6">
+                  {renderInput()}
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={submitAnswer}
+                      disabled={!userTranscript.trim()}
+                      className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      {safeT("submit_answer")}
+                    </button>
+                  </div>
+                </div>
+
+                {lastSubmittedAnswer && (
+                  <div className="mt-3 p-3 bg-blue-50 rounded-xl border-2 border-blue-200">
+                    <p className="text-sm text-blue-800 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-blue-600" />
+                      {safeT("your_answer")}:{" "}
+                      <span className="font-bold text-blue-900">{lastSubmittedAnswer}</span>
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      {safeT("voice_confirmation_sent")}
+                    </p>
+                  </div>
+                )}
+
+                {debugInfo.isListening && (
+                  <div className="mt-3 p-3 bg-gradient-to-r from-red-50 to-rose-50 rounded-xl flex items-center gap-3">
+                    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-medium text-red-600">
+                      {safeT("listening_speak_now")}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Stop Button */}
+        {(currentStep === "configuring" || currentStep === "generating") && (
+          <button
+            onClick={stopEverything}
+            className="px-5 py-3 bg-gradient-to-r from-rose-500 to-red-500 text-white rounded-xl mx-auto w-48 font-medium flex items-center justify-center gap-2"
+          >
+            <span>{safeT("stop_setup")}</span>
+          </button>
+        )}
+
+      </div>
     </div>
   );
 };

@@ -88,7 +88,7 @@ export default function FundersWizard({ userCountry }: Props) {
     },
   ];
 
-  // --- KARAOKE SPEECH ENGINE (From CreateInterviewAgent) ---
+  // --- KARAOKE SPEECH ENGINE ---
   const streamQuestionWithVoice = (fullText: string): Promise<void> => {
     return new Promise((resolve) => {
       if (!voiceEnabled || !window.speechSynthesis) {
@@ -150,7 +150,6 @@ export default function FundersWizard({ userCountry }: Props) {
   useEffect(() => {
     if (step >= 1 && step <= 5 && voiceEnabled) {
       const currentQ = questions[step - 1];
-      // Speak the question and list the options
       const textToSpeak = `${currentQ.text} The options are: ${currentQ.options.join(", ")}.`;
       streamQuestionWithVoice(textToSpeak);
     } else if (step === 6 && voiceEnabled) {
@@ -199,30 +198,35 @@ export default function FundersWizard({ userCountry }: Props) {
   // --- RENDER: START SCREEN (Step 0) ---
   if (step === 0) {
     return (
-      <div className="bg-white rounded-2xl p-10 border-2 border-emerald-200 shadow-xl max-w-2xl mx-auto text-center">
-        <h2 className="text-3xl font-bold text-emerald-800 mb-4">Find the Right Funder</h2>
-        <p className="text-gray-600 mb-8">
-          I will ask you 5 quick questions to match you with the perfect capital provider.
-        </p>
+      <div
+        className="min-h-screen w-full flex justify-center items-start bg-cover bg-center bg-no-repeat relative p-4"
+        style={{ backgroundImage: "url('/mwangi.jpg')" }}
+      >
+        <div className="relative z-10 bg-white rounded-2xl p-10 border-2 border-emerald-200 shadow-xl max-w-2xl mx-auto text-center mt-8">
+          <h2 className="text-3xl font-bold text-emerald-800 mb-4">Find the Right Funder</h2>
+          <p className="text-gray-600 mb-8">
+            I will ask you 5 quick questions to match you with the perfect capital provider.
+          </p>
 
-        <div className="flex items-center justify-center gap-4 mb-8">
+          <div className="flex items-center justify-center gap-4 mb-8">
+            <button
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
+                voiceEnabled ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400' : 'bg-gray-100 text-gray-500 border-2 border-transparent'
+              }`}
+            >
+              <Mic className="w-5 h-5" />
+              {voiceEnabled ? "Voice ON" : "Voice OFF"}
+            </button>
+          </div>
+
           <button
-            onClick={() => setVoiceEnabled(!voiceEnabled)}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all ${
-              voiceEnabled ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400' : 'bg-gray-100 text-gray-500 border-2 border-transparent'
-            }`}
+            onClick={() => setStep(1)}
+            className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-bold text-lg hover:scale-105 transition-all shadow-lg"
           >
-            <Mic className="w-5 h-5" />
-            {voiceEnabled ? "Voice ON" : "Voice OFF"}
+            Start Questionnaire
           </button>
         </div>
-
-        <button
-          onClick={() => setStep(1)}
-          className="px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-bold text-lg hover:scale-105 transition-all shadow-lg"
-        >
-          Start Questionnaire
-        </button>
       </div>
     );
   }
@@ -230,58 +234,63 @@ export default function FundersWizard({ userCountry }: Props) {
   // --- RENDER: RESULTS (Step 6) ---
   if (step === 6) {
     return (
-      <div className="bg-white rounded-2xl p-6 border-2 border-emerald-200 shadow-xl animate-fade-in">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">
-            🎉 Matched Funders ({results.length})
-          </h2>
-          {isStreaming && (
-            <span className="flex items-center gap-2 text-emerald-600 text-sm">
-              <Volume2 className="w-4 h-4 animate-pulse" /> Reading results...
-            </span>
-          )}
-        </div>
+      <div
+        className="min-h-screen w-full flex justify-center items-start bg-cover bg-center bg-no-repeat relative p-4"
+        style={{ backgroundImage: "url('/mwangi.jpg')" }}
+      >
+        <div className="relative z-10 bg-white rounded-2xl p-6 border-2 border-emerald-200 shadow-xl animate-fade-in max-w-4xl w-full mt-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-800">
+              🎉 Matched Funders ({results.length})
+            </h2>
+            {isStreaming && (
+              <span className="flex items-center gap-2 text-emerald-600 text-sm">
+                <Volume2 className="w-4 h-4 animate-pulse" /> Reading results...
+              </span>
+            )}
+          </div>
 
-        {results.length === 0 ? (
-          <div className="text-center py-10 bg-gray-50 rounded-xl">
-            <p className="text-gray-600 mb-4">No exact matches found for your specific criteria.</p>
-            <button onClick={resetWizard} className="text-emerald-600 font-bold hover:underline">
-              Try adjusting your filters
+          {results.length === 0 ? (
+            <div className="text-center py-10 bg-gray-50 rounded-xl">
+              <p className="text-gray-600 mb-4">No exact matches found for your specific criteria.</p>
+              <button onClick={resetWizard} className="text-emerald-600 font-bold hover:underline">
+                Try adjusting your filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {results.map((funder) => (
+                <div key={funder.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-lg transition-all flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-bold text-lg text-emerald-900">{funder.name}</h3>
+                    <div className="flex gap-2 my-2 flex-wrap">
+                      {funder.instrument.map((ins) => (
+                        <span key={ins} className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-md font-medium">{ins}</span>
+                      ))}
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">{funder.notes}</p>
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                    <div className="text-sm">
+                      <span className="text-gray-500">Ticket: </span>
+                      <span className="font-semibold text-gray-800">
+                        ${(funder.minUSD / 1000).toLocaleString()}k - ${(funder.maxUSD / 1000).toLocaleString()}k
+                      </span>
+                    </div>
+                    <a href={funder.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-emerald-600 font-bold hover:text-emerald-800">
+                      Visit <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-8 text-center">
+            <button onClick={resetWizard} className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium">
+              Start Over
             </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {results.map((funder) => (
-              <div key={funder.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-lg transition-all flex flex-col justify-between">
-                <div>
-                  <h3 className="font-bold text-lg text-emerald-900">{funder.name}</h3>
-                  <div className="flex gap-2 my-2 flex-wrap">
-                    {funder.instrument.map((ins) => (
-                      <span key={ins} className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-md font-medium">{ins}</span>
-                    ))}
-                  </div>
-                  <p className="text-sm text-gray-600 mb-4">{funder.notes}</p>
-                </div>
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-                  <div className="text-sm">
-                    <span className="text-gray-500">Ticket: </span>
-                    <span className="font-semibold text-gray-800">
-                      ${(funder.minUSD / 1000).toLocaleString()}k - ${(funder.maxUSD / 1000).toLocaleString()}k
-                    </span>
-                  </div>
-                  <a href={funder.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-emerald-600 font-bold hover:text-emerald-800">
-                    Visit <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-8 text-center">
-          <button onClick={resetWizard} className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium">
-            Start Over
-          </button>
         </div>
       </div>
     );
@@ -292,84 +301,89 @@ export default function FundersWizard({ userCountry }: Props) {
   const currentAnswer = answers[currentQ.id as keyof typeof answers];
 
   return (
-    <div className="bg-white rounded-2xl p-8 border-2 border-emerald-200 shadow-xl max-w-2xl mx-auto">
-      {/* Header with Voice Toggle */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex gap-2">
-          {questions.map((_, idx) => (
-            <div key={idx} className={`h-2 w-8 rounded-full ${idx < step ? 'bg-emerald-500' : 'bg-gray-200'}`} />
-          ))}
-        </div>
-        <button
-          onClick={() => setVoiceEnabled(!voiceEnabled)}
-          className={`p-2 rounded-lg ${voiceEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
-        >
-          <Mic className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="flex items-center gap-3 mb-6">
-        <span className="w-8 h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center font-bold text-sm">
-          {step}
-        </span>
-        <h2 className="text-xl font-bold text-gray-800">{currentQ.text}</h2>
-      </div>
-
-      {/* Karaoke Display Box */}
-      <div className="bg-emerald-50 rounded-xl p-6 border-2 border-emerald-200 mb-6 min-h-[80px]">
-        {isStreaming ? (
-          <p className="text-xl text-emerald-900 font-medium leading-relaxed">
-            {streamingQuestion}
-            <span className="animate-pulse text-emerald-500 ml-1">▍</span>
-          </p>
-        ) : streamingQuestion ? (
-          <p className="text-xl text-emerald-900 font-medium leading-relaxed">
-            {streamingQuestion}
-          </p>
-        ) : (
-          <p className="text-gray-400 italic">Preparing question...</p>
-        )}
-      </div>
-
-      {/* Dropdown Input (Disabled while speaking) */}
-      <div className="relative mb-8">
-        <select
-          value={currentAnswer}
-          onChange={(e) => handleChange(e.target.value)}
-          disabled={isStreaming}
-          className="w-full px-4 py-4 border-2 border-gray-300 rounded-xl appearance-none text-blue-900 font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all disabled:opacity-50 disabled:bg-gray-50"
-        >
-          <option value="" disabled>Select an option...</option>
-          {currentQ.options.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
-      </div>
-
-      <div className="flex gap-3">
-        {step > 1 && (
+    <div
+      className="min-h-screen w-full flex justify-center items-start bg-cover bg-center bg-no-repeat relative p-4"
+      style={{ backgroundImage: "url('/mwangi.jpg')" }}
+    >
+      <div className="relative z-10 bg-white rounded-2xl p-8 border-2 border-emerald-200 shadow-xl max-w-2xl mx-auto mt-8 w-full">
+        {/* Header with Voice Toggle */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex gap-2">
+            {questions.map((_, idx) => (
+              <div key={idx} className={`h-2 w-8 rounded-full ${idx < step ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+            ))}
+          </div>
           <button
-            onClick={() => setStep(step - 1)}
-            disabled={isStreaming}
-            className="px-6 py-4 bg-gray-100 text-gray-700 rounded-xl font-bold disabled:opacity-50"
+            onClick={() => setVoiceEnabled(!voiceEnabled)}
+            className={`p-2 rounded-lg ${voiceEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
           >
-            Back
+            <Mic className="w-5 h-5" />
           </button>
-        )}
-        <button
-          onClick={handleNext}
-          disabled={!currentAnswer || isStreaming || isSearching}
-          className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-all hover:scale-[1.01]"
-        >
-          {isSearching ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> Searching...</>
-          ) : step === questions.length ? (
-            "Find My Funders"
+        </div>
+
+        <div className="flex items-center gap-3 mb-6">
+          <span className="w-8 h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center font-bold text-sm">
+            {step}
+          </span>
+          <h2 className="text-xl font-bold text-gray-800">{currentQ.text}</h2>
+        </div>
+
+        {/* Karaoke Display Box */}
+        <div className="bg-emerald-50 rounded-xl p-6 border-2 border-emerald-200 mb-6 min-h-[80px]">
+          {isStreaming ? (
+            <p className="text-xl text-emerald-900 font-medium leading-relaxed">
+              {streamingQuestion}
+              <span className="animate-pulse text-emerald-500 ml-1">▍</span>
+            </p>
+          ) : streamingQuestion ? (
+            <p className="text-xl text-emerald-900 font-medium leading-relaxed">
+              {streamingQuestion}
+            </p>
           ) : (
-            <>Next <ArrowRight className="w-5 h-5" /></>
+            <p className="text-gray-400 italic">Preparing question...</p>
           )}
-        </button>
+        </div>
+
+        {/* Dropdown Input (Disabled while speaking) */}
+        <div className="relative mb-8">
+          <select
+            value={currentAnswer}
+            onChange={(e) => handleChange(e.target.value)}
+            disabled={isStreaming}
+            className="w-full px-4 py-4 border-2 border-gray-300 rounded-xl appearance-none text-blue-900 font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all disabled:opacity-50 disabled:bg-gray-50"
+          >
+            <option value="" disabled>Select an option...</option>
+            {currentQ.options.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
+        </div>
+
+        <div className="flex gap-3">
+          {step > 1 && (
+            <button
+              onClick={() => setStep(step - 1)}
+              disabled={isStreaming}
+              className="px-6 py-4 bg-gray-100 text-gray-700 rounded-xl font-bold disabled:opacity-50"
+            >
+              Back
+            </button>
+          )}
+          <button
+            onClick={handleNext}
+            disabled={!currentAnswer || isStreaming || isSearching}
+            className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-all hover:scale-[1.01]"
+          >
+            {isSearching ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Searching...</>
+            ) : step === questions.length ? (
+              "Find My Funders"
+            ) : (
+              <>Next <ArrowRight className="w-5 h-5" /></>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
