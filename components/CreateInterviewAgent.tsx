@@ -21,6 +21,24 @@ interface CreateInterviewAgentProps {
   profileImage?: string;
 }
 
+interface SavedProfile {
+  country: string;
+  county: string;
+  subCounty: string;
+  ward: string;
+  village: string;
+  isComplete: boolean;
+}
+
+const EMPTY_PROFILE: SavedProfile = {
+  country: "",
+  county: "",
+  subCounty: "",
+  ward: "",
+  village: "",
+  isComplete: false,
+};
+
 const countryOptions = [
   "Algeria","Antigua and Barbuda","Argentina","Australia","Bahamas","Barbados","Belgium","Belize","Benin",
   "Bolivia","Botswana","Burkina Faso","Burundi","Cameroon","Canada","Central African Republic","Chad",
@@ -51,6 +69,11 @@ const CreateInterviewAgent = ({
   const [recognitionLanguage, setRecognitionLanguage] = useState("en-US");
   const nameUsageCountRef = useRef(0);
   const voiceReadyToastShownRef = useRef(false);
+
+  // ===== NEW: saved profile from /api/profile/:userId =====
+  const [profile, setProfile] = useState<SavedProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const countryInitializedRef = useRef(false);
 
   const getSpokenCurrencyName = (): string => currency.name;
   const getDisplaySymbol = (): string => currency.symbol;
@@ -110,6 +133,7 @@ const CreateInterviewAgent = ({
   const retryCountRef = useRef(0);
   const maxRetries = 3;
   const wordTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const nextQuestionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const voiceCacheRef = useRef<Record<string, SpeechSynthesisVoice | null>>({});
   const ttsWarmedUpRef = useRef(false);
 
@@ -125,6 +149,71 @@ const CreateInterviewAgent = ({
     }
   };
 
+  // ===== NEW: fetch learner profile on mount =====
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProfile = async () => {
+      const uid =
+        userId ||
+        (typeof window !== "undefined" ? localStorage.getItem("userId") : null);
+
+      if (!uid) {
+        if (!cancelled) {
+          setProfile(EMPTY_PROFILE);
+          setProfileLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/profile/${encodeURIComponent(uid)}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setProfile({
+            country: data.country || "",
+            county: data.county || "",
+            subCounty: data.subCounty || "",
+            ward: data.ward || "",
+            village: data.village || "",
+            isComplete: Boolean(data.isComplete),
+          });
+        }
+      } catch (e) {
+        console.warn("[profile] fetch failed, assuming first-time user", e);
+        if (!cancelled) setProfile(EMPTY_PROFILE);
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    };
+
+    loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // ===== NEW: sync currency country with saved profile (once) =====
+  useEffect(() => {
+    if (profile?.country && !countryInitializedRef.current) {
+      countryInitializedRef.current = true;
+      setCountry(profile.country.toLowerCase());
+    }
+  }, [profile?.country, setCountry]);
+
+  // ===== NEW: pre-fill farmerDetails from saved profile =====
+  useEffect(() => {
+    if (!profile?.isComplete) return;
+    setFarmerDetails((prev) => ({
+      ...prev,
+      country: profile.country,
+      county: profile.county,
+      subCounty: profile.subCounty,
+      ward: profile.ward,
+      village: profile.village,
+    }));
+  }, [profile]);
+
   const previousLangRef = useRef<string>("");
   useEffect(() => {
     if (currentStep !== "idle") return;
@@ -139,7 +228,25 @@ const CreateInterviewAgent = ({
     }
   }, [i18n.language, currentStep]);
 
+  // ===== MODIFIED: topic-only for returning users =====
   const getQuestions = useCallback(() => {
+    const topicQuestion = {
+      id: "topic",
+      questionKey: "question_topic",
+      type: "dropdown",
+      options: topicOptions.map((t) => ({
+        id: t.id,
+        label: `${t.module} — ${safeT(t.topicLabel)}`,
+      })) as any[],
+      sectionKey: "section_topic",
+    };
+
+    // Returning learner — only the topic
+    if (profile?.isComplete) {
+      return [topicQuestion];
+    }
+
+    // First-time learner — full onboarding
     return [
       {
         id: "country",
@@ -148,16 +255,7 @@ const CreateInterviewAgent = ({
         options: countryOptions as any[],
         sectionKey: "section_location",
       },
-      {
-        id: "topic",
-        questionKey: "question_topic",
-        type: "dropdown",
-        options: topicOptions.map((t) => ({
-          id: t.id,
-          label: `${t.module} — ${safeT(t.topicLabel)}`,
-        })) as any[],
-        sectionKey: "section_topic",
-      },
+      topicQuestion,
       {
         id: "county",
         questionKey: "question_county",
@@ -187,7 +285,7 @@ const CreateInterviewAgent = ({
         sectionKey: "section_location",
       },
     ];
-  }, [topicOptions, safeT]);
+  }, [profile, topicOptions, safeT]);
 
   const allQuestions = useMemo(() => getQuestions(), [getQuestions]);
   const totalQuestions = allQuestions.length;
@@ -224,7 +322,6 @@ const CreateInterviewAgent = ({
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = recognitionLanguage;
-      recognitionRef.current.timeout = 15000;
 
       recognitionRef.current.onresult = (event: any) => {
         retryCountRef.current = 0;
@@ -262,10 +359,10 @@ const CreateInterviewAgent = ({
         }
       };
 
+      // FIX: do NOT reset retryCount here — only on successful onresult
       recognitionRef.current.onstart = () => {
         isRecognitionActiveRef.current = true;
         setDebugInfo((prev) => ({ ...prev, isListening: true }));
-        retryCountRef.current = 0;
       };
     }
 
@@ -587,6 +684,7 @@ const CreateInterviewAgent = ({
     }
 
     let finalValue = cleanAnswer;
+    let finalLabel: string | undefined;
 
     if (currentConfig.type === "dropdown") {
       const strOpts = (currentConfig.options || []).filter(
@@ -602,18 +700,41 @@ const CreateInterviewAgent = ({
             o.id === cleanAnswer ||
             o.label.toLowerCase() === cleanAnswer.toLowerCase()
         );
-        const chosen = matched || objOpts[0];
-        finalValue = chosen.id;
-        setFarmerDetails((prev) => ({ ...prev, topicLabel: chosen.label }));
+        if (!matched) {
+          const msg = safeT("could_not_match", { answer: cleanAnswer });
+          toast.warning(msg || `Could not match "${cleanAnswer}". Please try again.`);
+          if (voiceAssistantRef.current) {
+            await voiceAssistantRef.current.speak(msg || "Could not match. Please try again.");
+          }
+          return; // do not advance
+        }
+        finalValue = matched.id;
+        finalLabel = matched.label;
       } else {
         const matched = strOpts.find(
           (o) => o.toLowerCase() === cleanAnswer.toLowerCase()
         );
-        finalValue = matched ?? strOpts[0];
+        if (!matched) {
+          const msg = safeT("could_not_match", { answer: cleanAnswer });
+          toast.warning(msg || `Could not match "${cleanAnswer}". Please try again.`);
+          if (voiceAssistantRef.current) {
+            await voiceAssistantRef.current.speak(msg || "Could not match. Please try again.");
+          }
+          return;
+        }
+        finalValue = matched;
       }
     }
 
-    setFarmerDetails((prev) => ({ ...prev, [currentConfig.id]: finalValue }));
+    // FIX: compute nextDetails locally and pass it forward (no stale state)
+    const nextDetails = {
+      ...farmerDetails,
+      [currentConfig.id]: finalValue,
+      ...(currentConfig.id === "topic" && finalLabel
+        ? { topicLabel: finalLabel }
+        : {}),
+    };
+    setFarmerDetails(nextDetails);
     setLastSubmittedAnswer(cleanAnswer);
 
     await speakAcknowledgment(cleanAnswer, currentConfig.id);
@@ -622,10 +743,10 @@ const CreateInterviewAgent = ({
     if (configStep < allQuestions.length - 1) {
       const nextStep = configStep + 1;
       setConfigStep(nextStep);
-      setTimeout(() => askQuestion(nextStep), 2500);
+      nextQuestionTimerRef.current = setTimeout(() => askQuestion(nextStep), 2500);
     } else {
       setCurrentStep("generating");
-      generateSession();
+      generateSession(nextDetails);
     }
   };
 
@@ -664,14 +785,15 @@ const CreateInterviewAgent = ({
     setLastSubmittedAnswer("");
     nameUsageCountRef.current = 0;
 
+    // Pre-fill location from saved profile (or empty for first-time users)
     setFarmerDetails({
-      country: "",
+      country: profile?.country || "",
       topic: "",
       topicLabel: "",
-      county: "",
-      subCounty: "",
-      ward: "",
-      village: "",
+      county: profile?.county || "",
+      subCounty: profile?.subCounty || "",
+      ward: profile?.ward || "",
+      village: profile?.village || "",
     });
 
     await askQuestion(0);
@@ -679,6 +801,7 @@ const CreateInterviewAgent = ({
 
   const askQuestion = async (step: number) => {
     if (!voiceAssistantRef.current || step >= allQuestions.length) return;
+    retryCountRef.current = 0; // fresh retry budget per question
     if (isSpeaking) await new Promise((resolve) => setTimeout(resolve, 500));
 
     const questionKey = allQuestions[step].questionKey;
@@ -697,11 +820,23 @@ const CreateInterviewAgent = ({
     }
   };
 
-  const generateSession = async () => {
-    if (!voiceAssistantRef.current) return;
+  // ===== MODIFIED: accepts explicit details, merges with profile =====
+  const generateSession = async (details = farmerDetails) => {
     setIsLoading(true);
 
-    await voiceAssistantRef.current.speak(safeT("creating_profile"));
+    const merged = {
+      country: details.country || profile?.country || "",
+      county: details.county || profile?.county || "",
+      subCounty: details.subCounty || profile?.subCounty || "",
+      ward: details.ward || profile?.ward || "",
+      village: details.village || profile?.village || "",
+      topic: details.topic,
+      topicLabel: details.topicLabel,
+    };
+
+    if (voiceAssistantRef.current) {
+      await voiceAssistantRef.current.speak(safeT("creating_profile"));
+    }
 
     const currentUserId =
       userId || localStorage.getItem("userId") || `user-${Date.now()}`;
@@ -712,13 +847,13 @@ const CreateInterviewAgent = ({
 
     const requestBody = {
       userid: currentUserId,
-      country: farmerDetails.country.toLowerCase(),
-      topic: farmerDetails.topic,
-      topicLabel: farmerDetails.topicLabel,
-      county: farmerDetails.county,
-      subCounty: farmerDetails.subCounty,
-      ward: farmerDetails.ward,
-      village: farmerDetails.village,
+      country: merged.country.toLowerCase(),
+      topic: merged.topic,
+      topicLabel: merged.topicLabel,
+      county: merged.county,
+      subCounty: merged.subCounty,
+      ward: merged.ward,
+      village: merged.village,
       language: i18n.language,
     };
 
@@ -739,9 +874,11 @@ const CreateInterviewAgent = ({
       console.log("📥 [generateSession] Response:", data);
 
       if (data.success && data.sessionId) {
-        await voiceAssistantRef.current.speak(safeT("ready_redirect"));
-        setTimeout(() => (window.location.href = `/interview/${data.sessionId}`), 2000);
+        if (voiceAssistantRef.current) {
+          await voiceAssistantRef.current.speak(safeT("ready_redirect"));
+        }
         setCurrentStep("redirecting");
+        setTimeout(() => (window.location.href = `/interview/${data.sessionId}`), 2000);
       } else {
         throw new Error(data.error || "Unknown error");
       }
@@ -752,7 +889,8 @@ const CreateInterviewAgent = ({
         toast.error(safeT("request_timeout") || "Request timed out. Please try again.");
       } else {
         toast.error(
-          safeT("error_creating_profile") || "Failed to create learning session. Please try again."
+          safeT("error_creating_profile") ||
+            "Failed to create learning session. Please try again."
         );
       }
       setCurrentStep("error");
@@ -767,6 +905,11 @@ const CreateInterviewAgent = ({
     if (wordTimerRef.current) {
       clearTimeout(wordTimerRef.current);
       wordTimerRef.current = null;
+    }
+    // FIX: cancel pending next-question
+    if (nextQuestionTimerRef.current) {
+      clearTimeout(nextQuestionTimerRef.current);
+      nextQuestionTimerRef.current = null;
     }
     setCurrentStep("idle");
     setStreamingQuestion("");
@@ -848,15 +991,15 @@ const CreateInterviewAgent = ({
       ? `${currentWordIndex}/${questionWordsRef.current.length} ${safeT("words")}`
       : "";
 
+  const startDisabled =
+    !voiceEnabled || currentStep !== "idle" || profileLoading;
+
   return (
-    // ✅ OUTER WRAPPER — full-screen photo background (no dark overlay)
     <div
       className="min-h-screen w-full flex justify-center items-start bg-cover bg-center bg-no-repeat relative p-4"
       style={{ backgroundImage: "url('/muiruri.jpg')" }}
     >
-      {/* ✅ YOUR ORIGINAL LAYOUT — untouched */}
       <div className="relative z-10 flex flex-col gap-6 p-4 rounded-2xl w-full max-w-4xl">
-
         {/* Header */}
         <div className={`${colors.card} rounded-2xl p-5 shadow-xl border`}>
           <div className="flex justify-between items-center flex-wrap gap-2">
@@ -899,14 +1042,16 @@ const CreateInterviewAgent = ({
               </div>
               <button
                 onClick={startVoiceSetup}
-                disabled={!voiceEnabled || currentStep !== "idle"}
+                disabled={startDisabled}
                 className={`px-6 py-2 rounded-xl font-bold text-sm ${
-                  voiceEnabled && currentStep === "idle"
+                  !startDisabled
                     ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:scale-105 transition-all"
                     : "bg-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
               >
-                {currentStep === "generating" || currentStep === "redirecting"
+                {profileLoading
+                  ? safeT("loading")
+                  : currentStep === "generating" || currentStep === "redirecting"
                   ? safeT("generating_please_wait")
                   : currentStep === "idle"
                   ? safeT("start_setup")
@@ -1011,7 +1156,6 @@ const CreateInterviewAgent = ({
             <span>{safeT("stop_setup")}</span>
           </button>
         )}
-
       </div>
     </div>
   );

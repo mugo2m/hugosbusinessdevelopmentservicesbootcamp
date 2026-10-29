@@ -71,7 +71,8 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     }
   };
 
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  // ✅ DEFAULT ON — hands-free by default
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voiceInitializing, setVoiceInitializing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -87,11 +88,19 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   const [isCommentSubmitting, setIsCommentSubmitting] = useState<boolean>(false);
   const [commentSubmitted, setCommentSubmitted] = useState<boolean>(false);
 
+  // ===== REFS (auto-start guards) =====
   const nameUsageCountRef = useRef(0);
   const voiceServiceRef = useRef<VoiceService | null>(null);
   const mountedRef = useRef(true);
   const voiceServiceInitializedRef = useRef(false);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const hasAutoStartedRef = useRef(false);
+  const speechStartedRef = useRef(false);
+  const welcomeSpokenRef = useRef(false);
+  const sectionsSpokenRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const startVoiceSessionRef = useRef<(() => Promise<void>) | null>(null);
 
   const learnerName =
     sessionData?.learnerName || sessionData?.farmerName || userName || "Learner";
@@ -230,11 +239,16 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     }
   }, []);
 
+  // ===== VoiceService init (now also cancels speech on disable) =====
   useEffect(() => {
     if (!mountedRef.current) return;
     if (voiceServiceInitializedRef.current && voiceServiceRef.current) return;
 
     if (!voiceEnabled) {
+      // Cancel any ongoing speech when the user turns voice off
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        try { window.speechSynthesis.cancel(); } catch {}
+      }
       if (voiceServiceRef.current) {
         voiceServiceRef.current.destroy();
         voiceServiceRef.current = null;
@@ -270,6 +284,68 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
       }
     }
   }, [voiceEnabled, learnerName, learnerCountry, safeT]);
+
+  // ===== AUTO-START EFFECT =====
+  // Fires once, ~600ms after render (enough time for VoiceService + voices).
+  // No cleanup for the timer — intentional, so StrictMode double-invoke in dev
+  // still triggers a single auto-start.
+  useEffect(() => {
+    if (!ready) return;
+    if (!voiceEnabled) return;
+    if (sections.length === 0) return;
+    if (hasAutoStartedRef.current) return;
+
+    hasAutoStartedRef.current = true;
+
+    setTimeout(() => {
+      if (welcomeSpokenRef.current || isProcessingRef.current) return;
+      startVoiceSessionRef.current?.().catch((err) =>
+        console.warn("[Agent] Auto-start failed:", err)
+      );
+    }, 600);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, voiceEnabled, sections.length]);
+
+  // ===== GESTURE FALLBACK EFFECT =====
+  // Safari/iOS blocks speechSynthesis before a user gesture. If we detect that
+  // speech never actually started, retry once on the user's first interaction.
+  useEffect(() => {
+    if (!ready) return;
+    if (!voiceEnabled) return;
+
+    const retry = () => {
+      document.removeEventListener("pointerdown", retry);
+      document.removeEventListener("keydown", retry);
+      document.removeEventListener("touchstart", retry);
+
+      // Small delay so any in-flight auto-start finishes first
+      setTimeout(() => {
+        if (speechStartedRef.current) return; // autoplay worked
+        if (isProcessingRef.current) return;  // still attempting
+
+        // Reset flow guards so startVoiceSession will re-speak
+        welcomeSpokenRef.current = false;
+        sectionsSpokenRef.current = false;
+        setWelcomeSpoken(false);
+        setSectionsSpoken(false);
+
+        startVoiceSessionRef.current?.().catch((err) =>
+          console.warn("[Agent] Gesture-start failed:", err)
+        );
+      }, 100);
+    };
+
+    document.addEventListener("pointerdown", retry, { passive: true });
+    document.addEventListener("keydown", retry, { passive: true });
+    document.addEventListener("touchstart", retry, { passive: true });
+
+    return () => {
+      document.removeEventListener("pointerdown", retry);
+      document.removeEventListener("keydown", retry);
+      document.removeEventListener("touchstart", retry);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, voiceEnabled]);
 
   if (!ready) {
     return (
@@ -374,6 +450,9 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     utterance.volume = 1.0;
 
     await new Promise<void>((resolve) => {
+      utterance.onstart = () => {
+        speechStartedRef.current = true;
+      };
       utterance.onend = () => {
         if (animationId) cancelAnimationFrame(animationId);
         setSectionStreams((prev) => ({ ...prev, [index]: fullRawText }));
@@ -404,6 +483,9 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     utterance.lang = language;
     utterance.rate = 0.9;
     return new Promise((resolve) => {
+      utterance.onstart = () => {
+        speechStartedRef.current = true;
+      };
       utterance.onend = () => resolve();
       utterance.onerror = () => resolve();
       window.speechSynthesis.speak(utterance);
@@ -411,8 +493,9 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   };
 
   const streamAllSections = async () => {
-    if (sections.length === 0 || sectionsSpoken) return;
+    if (sections.length === 0 || sectionsSpokenRef.current) return;
 
+    sectionsSpokenRef.current = true;
     setSectionsSpoken(true);
     nameUsageCountRef.current = 0;
 
@@ -434,13 +517,13 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
   };
 
   const startVoiceSession = async () => {
-    if (isProcessing) return;
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
     setIsProcessing(true);
 
     try {
       if (!voiceEnabled) {
         toast.error(safeT("voice_on_first_hint"));
-        setIsProcessing(false);
         return;
       }
 
@@ -456,14 +539,17 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
         setVoiceInitializing(false);
         if (!voiceServiceRef.current) {
           toast.error(safeT("voice_service_failed"));
-          setIsProcessing(false);
           return;
         }
       }
 
       setIsLoading(true);
 
-      if (sessionData && voiceServiceRef.current && typeof (voiceServiceRef.current as any).startFarmerSession === "function") {
+      if (
+        sessionData &&
+        voiceServiceRef.current &&
+        typeof (voiceServiceRef.current as any).startFarmerSession === "function"
+      ) {
         try {
           await (voiceServiceRef.current as any).startFarmerSession(sessionData);
         } catch (e) {
@@ -471,7 +557,8 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
         }
       }
 
-      if (!welcomeSpoken) {
+      if (!welcomeSpokenRef.current) {
+        welcomeSpokenRef.current = true;
         setWelcomeSpoken(true);
         nameUsageCountRef.current = 0;
         setSectionStreams({});
@@ -490,8 +577,12 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
     } finally {
       setIsLoading(false);
       setIsProcessing(false);
+      isProcessingRef.current = false;
     }
   };
+
+  // ⬇️ Assign the ref AFTER the function is defined, so effects can call it
+  startVoiceSessionRef.current = startVoiceSession;
 
   const submitLearnerComment = async () => {
     if (!learnerComment.trim() || !sessionData) return;
@@ -545,7 +636,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
 
     const displayedText = sectionStreams[idx] || "";
     const fullText = buildSectionSpeech(rawSection);
-    const finalText = isActive ? displayedText : fullText;
     const progressPercent =
       fullText.length > 0 ? (displayedText.length / fullText.length) * 100 : 0;
 
@@ -617,7 +707,6 @@ const Agent = ({ userName, userId, interviewId, sessionData }: AgentProps) => {
 
   return (
     <div className="flex flex-col gap-6 p-4 bg-gradient-to-br from-slate-50 to-white rounded-2xl">
-
       {/* Header */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-emerald-100">
         <div className="flex items-center justify-between">
